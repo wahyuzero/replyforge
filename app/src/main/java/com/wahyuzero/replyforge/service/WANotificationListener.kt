@@ -20,6 +20,7 @@ import com.wahyuzero.replyforge.R
 import com.wahyuzero.replyforge.data.db.AppDatabase
 import com.wahyuzero.replyforge.data.prefs.AppPrefs
 import com.wahyuzero.replyforge.engine.AutoReplyEngine
+import com.wahyuzero.replyforge.engine.ReplyResult
 import com.wahyuzero.replyforge.network.AiService
 import com.wahyuzero.replyforge.ui.main.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -49,7 +50,7 @@ class WANotificationListener : NotificationListenerService() {
     private lateinit var aiService: AiService
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val handler = Handler(Looper.getMainLooper())
-    private val processedNotifications = mutableSetOf<String>()
+    private val processedNotifications = java.util.LinkedHashMap<String, Boolean>(512, 0.75f, true)
 
     override fun onCreate() {
         super.onCreate()
@@ -82,12 +83,12 @@ class WANotificationListener : NotificationListenerService() {
 
         if (title.isBlank() || text.isBlank()) return
 
-        val notificationKey = sbn.key
-        if (notificationKey in processedNotifications) return
-        processedNotifications.add(notificationKey)
+        val notificationKey = sbn.key ?: return
+        if (processedNotifications.containsKey(notificationKey)) return
+        processedNotifications[notificationKey] = true
 
         if (processedNotifications.size > 500) {
-            val iter = processedNotifications.iterator()
+            val iter = processedNotifications.keys.iterator()
             repeat(250) { iter.next(); iter.remove() }
         }
 
@@ -122,7 +123,7 @@ class WANotificationListener : NotificationListenerService() {
                 if (result != null) {
                     Log.d(TAG, "Matched rule, sending reply in ${result.delayMs}ms: ${result.replyText}")
                     handler.postDelayed({
-                        sendReply(sbn, result.replyText)
+                        sendReply(sbn, result)
                     }, result.delayMs)
                 }
             } catch (e: Exception) {
@@ -131,7 +132,7 @@ class WANotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun sendReply(sbn: StatusBarNotification, replyText: String) {
+    private fun sendReply(sbn: StatusBarNotification, result: ReplyResult) {
         val notification = sbn.notification ?: return
         val actions = notification.actions ?: return
 
@@ -156,11 +157,18 @@ class WANotificationListener : NotificationListenerService() {
             val intent = Intent()
             val bundle = android.os.Bundle()
             for (input in replyAction.remoteInputs ?: emptyArray()) {
-                bundle.putCharSequence(input.resultKey, replyText)
+                bundle.putCharSequence(input.resultKey, result.replyText)
             }
             intent.putExtras(bundle)
             replyAction.actionIntent.send(applicationContext, 0, intent)
-            Log.d(TAG, "Reply sent successfully: $replyText")
+            Log.d(TAG, "Reply sent successfully: ${result.replyText}")
+            // Log to history only after successful send
+            serviceScope.launch {
+                autoReplyEngine.logReply(
+                    result.matchedRule.id, result.sender, result.originalText,
+                    result.replyText, result.isGroup, result.groupName, result.processTimeMs
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send reply", e)
         }

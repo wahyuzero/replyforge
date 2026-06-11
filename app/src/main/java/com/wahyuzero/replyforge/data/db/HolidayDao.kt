@@ -17,7 +17,7 @@ interface HolidayDao {
     @Query("SELECT * FROM holidays WHERE date = :date LIMIT 1")
     suspend fun getByDate(date: String): Holiday?
 
-    @Query("SELECT EXISTS(SELECT 1 FROM holidays WHERE date = :date)")
+    @Query("SELECT EXISTS(SELECT 1 FROM holidays WHERE date = :date OR (isRecurringAnnual = 1 AND substr(date, 6) = substr(:date, 6)))")
     suspend fun isHoliday(date: String): Boolean
 
     @Query("SELECT COUNT(*) FROM holidays")

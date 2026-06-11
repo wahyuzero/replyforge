@@ -111,10 +111,16 @@ class AiProviderActivity : AppCompatActivity() {
             editTemperature.setText("0.7")
         }
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(if (existingProvider != null) "Edit Provider" else "Add AI Provider")
             .setView(dialogView)
-            .setPositiveButton("Save") { _, _ ->
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.setOnShowListener {
+            val saveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            saveButton.setOnClickListener {
                 val name = editName.text.toString().trim()
                 val typeName = spinnerType.text.toString()
                 val baseUrl = editBaseUrl.text.toString().trim()
@@ -125,7 +131,7 @@ class AiProviderActivity : AppCompatActivity() {
 
                 if (name.isBlank() || baseUrl.isBlank() || apiKey.isBlank() || modelName.isBlank()) {
                     Toast.makeText(this, "All fields are required", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
+                    return@setOnClickListener
                 }
 
                 val type = try { AiProviderType.valueOf(typeName) } catch (e: Exception) { AiProviderType.OPENAI }
@@ -159,9 +165,11 @@ class AiProviderActivity : AppCompatActivity() {
                 }
 
                 Toast.makeText(this, if (existingProvider != null) "Provider updated" else "Provider added", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
+
+        dialog.show()
     }
 
     private fun showDeleteConfirm(provider: AiProvider) {

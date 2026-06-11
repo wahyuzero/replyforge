@@ -25,6 +25,9 @@ interface ConversationDao {
     @Query("DELETE FROM conversation_messages")
     suspend fun deleteAll()
 
+    @Query("DELETE FROM conversation_messages WHERE id = (SELECT id FROM conversation_messages WHERE contactName = :contactName ORDER BY timestamp DESC LIMIT 1)")
+    suspend fun deleteLastMessage(contactName: String)
+
     @Query("SELECT COUNT(*) FROM conversation_messages WHERE contactName = :contactName")
     suspend fun getMessageCount(contactName: String): Int
 }

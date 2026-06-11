@@ -20,6 +20,7 @@ import com.wahyuzero.replyforge.service.WANotificationListener
 import com.wahyuzero.replyforge.ui.main.MainActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class WelcomeActivity : AppCompatActivity() {
@@ -44,22 +45,21 @@ class WelcomeActivity : AppCompatActivity() {
 
     private fun checkIfWelcomeDone() {
         lifecycleScope.launch {
-            appPrefs.welcomeDone.collect { done ->
-                if (done) {
-                    navigateToMain()
-                }
+            val done = appPrefs.welcomeDone.first()
+            if (done) {
+                navigateToMain()
             }
         }
     }
 
     private fun setupViewPager() {
-        val pages = listOf(
-            layoutInflater.inflate(R.layout.welcome_page_1, binding.viewPager as ViewGroup, false),
-            layoutInflater.inflate(R.layout.welcome_page_2, binding.viewPager as ViewGroup, false),
-            layoutInflater.inflate(R.layout.welcome_page_3, binding.viewPager as ViewGroup, false)
+        val pageLayouts = listOf(
+            R.layout.welcome_page_1,
+            R.layout.welcome_page_2,
+            R.layout.welcome_page_3
         )
 
-        val adapter = WelcomePagerAdapter(pages)
+        val adapter = WelcomePagerAdapter(pageLayouts)
         binding.viewPager.adapter = adapter
 
         binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
@@ -144,18 +144,17 @@ class WelcomeActivity : AppCompatActivity() {
     }
 
     private inner class WelcomePagerAdapter(
-        private val pages: List<View>
+        private val pageLayouts: List<Int>
     ) : androidx.recyclerview.widget.RecyclerView.Adapter<WelcomePagerAdapter.PageViewHolder>() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
-            val view = pages[viewType]
-            (view.parent as? ViewGroup)?.removeView(view)
+            val view = layoutInflater.inflate(pageLayouts[viewType], parent, false)
             return PageViewHolder(view)
         }
 
         override fun onBindViewHolder(holder: PageViewHolder, position: Int) {}
 
-        override fun getItemCount(): Int = pages.size
+        override fun getItemCount(): Int = pageLayouts.size
 
         override fun getItemViewType(position: Int): Int = position
 

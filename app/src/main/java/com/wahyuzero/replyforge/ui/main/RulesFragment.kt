@@ -44,8 +44,8 @@ class RulesFragment : Fragment() {
                 startActivity(intent)
             },
             onToggleClick = { rule, enabled ->
-                lifecycleScope.launch(Dispatchers.IO) {
-                    db.ruleDao().update(rule.copy(enabled = enabled, updatedAt = System.currentTimeMillis()))
+                viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+                    db.ruleDao().setEnabled(rule.id, enabled)
                 }
             },
             onLongClick = { rule ->

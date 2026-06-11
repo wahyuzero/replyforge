@@ -1,6 +1,7 @@
 package com.wahyuzero.replyforge.network
 
 import android.util.Log
+import com.wahyuzero.replyforge.BuildConfig
 import com.wahyuzero.replyforge.data.db.AiUsageDao
 import com.wahyuzero.replyforge.data.db.ConversationDao
 import com.wahyuzero.replyforge.data.model.AiProvider
@@ -58,26 +59,22 @@ class AiService(
         val totalTokens: Int = 0
     )
 
-    private val apiClient: AiApiClient by lazy {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
+    val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor(HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+        })
+        .build()
 
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .addInterceptor(loggingInterceptor)
-            .build()
+    val retrofit = Retrofit.Builder()
+        .baseUrl("https://api.openai.com/") // Placeholder; actual URL is passed per-request
+        .client(okHttpClient)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
 
-        val retrofit = Retrofit.Builder()
-            .baseUrl("https://api.openai.com/") // Placeholder; actual URL is passed per-request
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-
-        retrofit.create(AiApiClient::class.java)
-    }
+    val apiClient = retrofit.create(AiApiClient::class.java)
 
     /**
      * Get AI reply for an incoming message.
@@ -149,12 +146,15 @@ class AiService(
                 request = request
             )
 
-            // Extract reply
-            val replyText = response.choices?.firstOrNull()?.message?.content?.trim()
-            if (replyText.isNullOrBlank()) {
+            // Extract reply with truncation for WhatsApp limit
+            val rawContent = response.choices?.firstOrNull()?.message?.content?.trim()
+            if (rawContent.isNullOrBlank()) {
                 Log.w(TAG, "AI returned empty response")
+                // Rollback: remove the user message we saved earlier
+                conversationDao.deleteLastMessage(contactName)
                 return null
             }
+            val replyText = if (rawContent.length > 1000) rawContent.substring(0, 1000) + "…" else rawContent
 
             // Save assistant response to conversation memory
             conversationDao.insert(

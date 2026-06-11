@@ -30,7 +30,12 @@ import kotlin.random.Random
 data class ReplyResult(
     val replyText: String,
     val delayMs: Long,
-    val matchedRule: Rule
+    val matchedRule: Rule,
+    val sender: String,
+    val originalText: String,
+    val isGroup: Boolean,
+    val groupName: String?,
+    val processTimeMs: Long
 )
 
 class AutoReplyEngine(
@@ -176,12 +181,16 @@ class AutoReplyEngine(
         recordRateLimit(matchedRule.id, sender, todayDate, now.timeInMillis)
 
         val processTimeMs = System.currentTimeMillis() - processStartTime
-        logReply(matchedRule.id, sender, text, finalResponse, isGroup, groupName, processTimeMs)
 
         return ReplyResult(
             replyText = finalResponse,
             delayMs = delayMs,
-            matchedRule = matchedRule
+            matchedRule = matchedRule,
+            sender = sender,
+            originalText = text,
+            isGroup = isGroup,
+            groupName = groupName,
+            processTimeMs = processTimeMs
         )
     }
 
@@ -481,10 +490,12 @@ class AutoReplyEngine(
         if (delayMin <= 0 && delayMax <= 0) return 0L
         val min = delayMin.coerceAtLeast(0)
         val max = if (delayMax <= 0) min else delayMax.coerceAtLeast(min)
-        return Random.nextLong(min.toLong(), (max + 1).toLong())
+        // Guard against Int overflow when max == Int.MAX_VALUE
+        val maxPlusOne = if (max == Int.MAX_VALUE) max.toLong() + 1L else (max + 1).toLong()
+        return Random.nextLong(min.toLong(), maxPlusOne)
     }
 
-    private suspend fun logReply(
+    suspend fun logReply(
         ruleId: Long?,
         sender: String,
         message: String,

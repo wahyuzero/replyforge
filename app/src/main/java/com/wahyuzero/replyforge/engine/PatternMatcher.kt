@@ -10,6 +10,18 @@ object PatternMatcher {
         val groups: List<String> = emptyList()
     )
 
+    // M5: Cache compiled Regex objects to avoid re-compilation on every notification
+    private val regexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+    private const val REGEX_CACHE_MAX = 64
+
+    private fun getCachedRegex(pattern: String, options: Set<RegexOption>): Regex {
+        val key = "${options}:${pattern}"
+        return regexCache.getOrPut(key) {
+            if (regexCache.size > REGEX_CACHE_MAX) regexCache.clear()
+            Regex(pattern, options)
+        }
+    }
+
     fun matchPattern(
         pattern: String,
         message: String,
@@ -96,25 +108,36 @@ object PatternMatcher {
         return 1.0 - (distance.toDouble() / maxLen.toDouble())
     }
 
+    // Two-row DP optimization — O(min(m,n)) memory instead of O(m*n)
     private fun levenshteinDistance(s1: String, s2: String): Int {
         val m = s1.length
         val n = s2.length
-        val dp = Array(m + 1) { IntArray(n + 1) }
+        if (m == 0) return n
+        if (n == 0) return m
 
-        for (i in 0..m) dp[i][0] = i
-        for (j in 0..n) dp[0][j] = j
+        // Use shorter string as inner loop for less memory
+        val (longer, shorter) = if (m >= n) s1 to s2 else s2 to s1
+        val longLen = maxOf(m, n)
+        val shortLen = minOf(m, n)
 
-        for (i in 1..m) {
-            for (j in 1..n) {
-                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
-                dp[i][j] = minOf(
-                    dp[i - 1][j] + 1,      // deletion
-                    dp[i][j - 1] + 1,      // insertion
-                    dp[i - 1][j - 1] + cost // substitution
+        var prev = IntArray(shortLen + 1) { it }
+        var curr = IntArray(shortLen + 1)
+
+        for (i in 1..longLen) {
+            curr[0] = i
+            for (j in 1..shortLen) {
+                val cost = if (longer[i - 1] == shorter[j - 1]) 0 else 1
+                curr[j] = minOf(
+                    prev[j] + 1,       // deletion
+                    curr[j - 1] + 1,   // insertion
+                    prev[j - 1] + cost // substitution
                 )
             }
+            val tmp = prev
+            prev = curr
+            curr = tmp
         }
-        return dp[m][n]
+        return prev[shortLen]
     }
 
     private fun matchExact(pattern: String, message: String): Boolean {
@@ -129,17 +152,23 @@ object PatternMatcher {
     }
 
     private fun matchStartsWith(pattern: String, message: String): Boolean {
+        if (pattern.contains("*") || pattern.contains("?")) {
+            return matchWildcard(pattern, message)
+        }
         return message.startsWith(pattern)
     }
 
     private fun matchEndsWith(pattern: String, message: String): Boolean {
+        if (pattern.contains("*") || pattern.contains("?")) {
+            return matchWildcard(pattern, message)
+        }
         return message.endsWith(pattern)
     }
 
     private fun matchRegexWithGroups(pattern: String, message: String, caseInsensitive: Boolean): MatchResult {
         return try {
             val options = if (caseInsensitive) setOf(RegexOption.IGNORE_CASE) else emptySet()
-            val regex = Regex(pattern, options)
+            val regex = getCachedRegex(pattern, options)
             val matchResult = regex.find(message)
             if (matchResult != null) {
                 val groups = matchResult.groupValues.drop(1) // drop full match at index 0
@@ -155,7 +184,7 @@ object PatternMatcher {
     private fun matchRegex(pattern: String, message: String, caseSensitive: Boolean): Boolean {
         return try {
             val options = if (caseSensitive) emptySet<RegexOption>() else setOf(RegexOption.IGNORE_CASE)
-            val regex = Regex(pattern, options)
+            val regex = getCachedRegex(pattern, options)
             regex.containsMatchIn(message)
         } catch (e: Exception) {
             false
