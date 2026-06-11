@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
@@ -37,15 +38,29 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        try {
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
 
-        appPrefs = AppPrefs(this)
+            appPrefs = AppPrefs(this)
 
-        setupToolbar()
-        setupViewPager()
-        setupFAB()
-        observeSettings()
+            setupToolbar()
+            setupViewPager()
+            setupFAB()
+            observeSettings()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "CRASH in onCreate", e)
+            // Write crash info to a toast so user can see
+            Toast.makeText(this, "Error: ${e.message}\n${e.cause?.message}", Toast.LENGTH_LONG).show()
+            // Write to crash log file
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                openFileOutput("main_crash.log", MODE_APPEND).use { fos ->
+                    fos.write("=== ${java.util.Date()} ===\n${sw}\n\n".toByteArray())
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     override fun onResume() {
