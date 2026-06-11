@@ -50,6 +50,8 @@ class AutoReplyEngine(
 
     companion object {
         private const val TAG = "AutoReplyEngine"
+        const val WHATSAPP_MSG_LIMIT = 1000
+        private const val RANDOM_STRING_LENGTH = 8
         // Thread-safe sequential index tracking per rule to prevent race conditions
         private val sequentialCounters = ConcurrentHashMap<Long, AtomicInteger>()
     }
@@ -102,9 +104,9 @@ class AutoReplyEngine(
         }
 
         // Gap fill: Receiver type check
-        if (matchedRule.receiverType != 0) {
-            if (matchedRule.receiverType == 1 && isGroup) return null
-            if (matchedRule.receiverType == 2 && !isGroup) return null
+        if (matchedRule.receiverType != Rule.RECEIVER_BOTH) {
+            if (matchedRule.receiverType == Rule.RECEIVER_CONTACTS && isGroup) return null
+            if (matchedRule.receiverType == Rule.RECEIVER_GROUPS && !isGroup) return null
         }
 
         // Gap fill: Specific contacts allowlist
@@ -349,7 +351,6 @@ class AutoReplyEngine(
         val dateFmt = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
         val dayFmt = SimpleDateFormat("EEEE", Locale.getDefault())
         val dateShortFmt = SimpleDateFormat("dd/MM/yy", Locale.getDefault())
-        val timeShortFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         val nameWords = sender.trim().split("\\s+".toRegex())
         val firstName = nameWords.firstOrNull() ?: sender
@@ -371,25 +372,25 @@ class AutoReplyEngine(
             .replace("%username%", sender) // compatibility
             // Short date/time
             .replace("%date_short%", dateShortFmt.format(now))
-            .replace("%time_short%", timeShortFmt.format(now))
+            .replace("%time_short%", timeFmt.format(now))
             // Individual date/time parts
             .replace("%year%", cal.get(Calendar.YEAR).toString())
-            .replace("%month%", String.format("%02d", cal.get(Calendar.MONTH) + 1))
-            .replace("%day%", String.format("%02d", cal.get(Calendar.DAY_OF_MONTH)))
-            .replace("%hour%", String.format("%02d", cal.get(Calendar.HOUR_OF_DAY)))
-            .replace("%minute%", String.format("%02d", cal.get(Calendar.MINUTE)))
-            .replace("%second%", String.format("%02d", cal.get(Calendar.SECOND)))
+            .replace("%month%", String.format(Locale.US, "%02d", cal.get(Calendar.MONTH) + 1))
+            .replace("%day%", String.format(Locale.US, "%02d", cal.get(Calendar.DAY_OF_MONTH)))
+            .replace("%hour%", String.format(Locale.US, "%02d", cal.get(Calendar.HOUR_OF_DAY)))
+            .replace("%minute%", String.format(Locale.US, "%02d", cal.get(Calendar.MINUTE)))
+            .replace("%second%", String.format(Locale.US, "%02d", cal.get(Calendar.SECOND)))
             // Week and day of year
             .replace("%week%", cal.get(Calendar.WEEK_OF_YEAR).toString())
             .replace("%day_of_year%", cal.get(Calendar.DAY_OF_YEAR).toString())
             // Random strings
-            .replace("%rndm_abc%", generateRandomString(8, ('a'..'z').toList()))
-            .replace("%rndm_abc_upper%", generateRandomString(8, ('A'..'Z').toList()))
-            .replace("%rndm_num%", generateRandomString(8, ('0'..'9').toList()))
-            .replace("%rndm_abcnum%", generateRandomString(8, ('a'..'z') + ('A'..'Z') + ('0'..'9')))
-            .replace("%rndm_symbol%", generateRandomString(8, "!@#\$%^&*".toList()))
-            .replace("%rndm_grawlix%", generateRandomString(8, "!@#\$%^&*".toList()))
-            .replace("%rndm_ascii%", generateRandomString(8, (33..126).map { it.toChar() }))
+            .replace("%rndm_abc%", generateRandomString(RANDOM_STRING_LENGTH, ('a'..'z').toList()))
+            .replace("%rndm_abc_upper%", generateRandomString(RANDOM_STRING_LENGTH, ('A'..'Z').toList()))
+            .replace("%rndm_num%", generateRandomString(RANDOM_STRING_LENGTH, ('0'..'9').toList()))
+            .replace("%rndm_abcnum%", generateRandomString(RANDOM_STRING_LENGTH, ('a'..'z') + ('A'..'Z') + ('0'..'9')))
+            .replace("%rndm_symbol%", generateRandomString(RANDOM_STRING_LENGTH, "!@#\\$%^&*".toList()))
+            .replace("%rndm_grawlix%", generateRandomString(RANDOM_STRING_LENGTH, "!@#\\$%^&*".toList()))
+            .replace("%rndm_ascii%", generateRandomString(RANDOM_STRING_LENGTH, (33..126).map { it.toChar() }))
             // Line break placeholder
             .replace("%line_break%", "\n")
 

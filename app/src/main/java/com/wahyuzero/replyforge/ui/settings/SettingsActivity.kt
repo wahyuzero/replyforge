@@ -58,7 +58,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Settings"
+        supportActionBar?.title = getString(R.string.title_settings)
     }
 
     private fun setupAutoReplyToggle() {
@@ -76,9 +76,9 @@ class SettingsActivity : AppCompatActivity() {
         val hasPermission = enabledListeners?.contains(componentName.flattenToString()) == true
 
         binding.textServiceStatus.text = if (hasPermission) {
-            "Notification access: Granted"
+            getString(R.string.notification_access_granted)
         } else {
-            "Notification access: Not granted"
+            getString(R.string.notification_access_denied)
         }
         binding.textServiceStatus.setTextColor(
             if (hasPermission) {
@@ -95,7 +95,7 @@ class SettingsActivity : AppCompatActivity() {
                 val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                 startActivity(intent)
             } catch (e: Exception) {
-                Toast.makeText(this, "Could not open notification settings", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.could_not_open_settings), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -103,22 +103,22 @@ class SettingsActivity : AppCompatActivity() {
     private fun setupClearHistory() {
         binding.itemClearHistory.setOnClickListener {
             AlertDialog.Builder(this)
-                .setTitle("Clear History")
-                .setMessage("Are you sure you want to clear all reply history? This cannot be undone.")
-                .setPositiveButton("Clear") { _, _ ->
+                .setTitle(getString(R.string.title_clear_history))
+                .setMessage(getString(R.string.clear_history_message))
+                .setPositiveButton(getString(R.string.delete)) { _, _ ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         AppDatabase.getInstance(this@SettingsActivity).historyDao().deleteAll()
                     }
-                    Toast.makeText(this, "History cleared", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.history_cleared), Toast.LENGTH_SHORT).show()
                 }
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(getString(R.string.cancel), null)
                 .show()
         }
     }
 
     private fun setupAbout() {
-        binding.textVersion.text = "Version 1.0.0"
-        binding.textAbout.text = "ReplyForge\nSmart auto-reply for WhatsApp. Forge your perfect replies with AI power."
+        binding.textVersion.text = getString(R.string.version_info, com.wahyuzero.replyforge.BuildConfig.VERSION_NAME)
+        binding.textAbout.text = getString(R.string.about_description)
         binding.cardAbout.setOnClickListener {
             startActivity(Intent(this, AboutActivity::class.java))
         }
@@ -163,21 +163,21 @@ class SettingsActivity : AppCompatActivity() {
             val name = binding.editHolidayName.text.toString().trim()
             val date = binding.editHolidayDate.text.toString().trim()
             if (name.isBlank() || date.isBlank()) {
-                Toast.makeText(this, "Name and date required", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.name_date_required), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             if (!date.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                Toast.makeText(this, "Date format: yyyy-MM-dd", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.date_format_hint), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             val recurring = binding.switchHolidayRecurring.isChecked
             lifecycleScope.launch(Dispatchers.IO) {
-                db.holidayDao().insert(Holiday(name = name, date = date, isRecurringAnnual = if (recurring) 1 else 0))
+                db.holidayDao().insert(Holiday(name = name, date = date, isRecurringAnnual = recurring))
             }
             binding.editHolidayName.text?.clear()
             binding.editHolidayDate.text?.clear()
             binding.switchHolidayRecurring.isChecked = false
-            Toast.makeText(this, "Holiday added", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.holiday_added), Toast.LENGTH_SHORT).show()
         }
 
         // Observe holidays
@@ -245,8 +245,23 @@ class SettingsActivity : AppCompatActivity() {
         private var items: List<Holiday> = emptyList()
 
         fun submitList(newItems: List<Holiday>) {
+            val oldSize = items.size
             items = newItems
-            notifyDataSetChanged()
+            val newSize = items.size
+            when {
+                oldSize == 0 && newSize > 0 -> notifyItemRangeInserted(0, newSize)
+                newSize == 0 && oldSize > 0 -> notifyItemRangeRemoved(0, oldSize)
+                newSize == oldSize -> notifyItemRangeChanged(0, newSize)
+                else -> {
+                    if (newSize > oldSize) {
+                        notifyItemRangeChanged(0, oldSize)
+                        notifyItemRangeInserted(oldSize, newSize - oldSize)
+                    } else {
+                        notifyItemRangeChanged(0, newSize)
+                        notifyItemRangeRemoved(newSize, oldSize - newSize)
+                    }
+                }
+            }
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HolidayViewHolder {
@@ -258,7 +273,7 @@ class SettingsActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: HolidayViewHolder, position: Int) {
             val holiday = items[position]
             holder.nameText.text = holiday.name
-            val suffix = if (holiday.isRecurringAnnual == 1) " (Annual)" else ""
+            val suffix = if (holiday.isRecurringAnnual) " (Annual)" else ""
             holder.dateText.text = "${holiday.date}$suffix"
             holder.deleteChip.setOnClickListener { onDelete(holiday) }
         }

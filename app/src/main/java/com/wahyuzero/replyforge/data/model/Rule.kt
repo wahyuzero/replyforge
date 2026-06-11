@@ -1,5 +1,6 @@
 package com.wahyuzero.replyforge.data.model
 
+import androidx.annotation.Keep
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -12,6 +13,7 @@ import com.wahyuzero.replyforge.ui.rule.MatchType
         Index("priority")
     ]
 )
+@Keep
 data class Rule(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -69,7 +71,13 @@ data class Rule(
     val dailyReplyLimit: Int = 0, // 0=unlimited
     val preventRepeatingMs: Long = 0L,
     val prevRuleTimeoutMs: Long = 0L
-)
+) {
+    companion object {
+        const val RECEIVER_BOTH = 0
+        const val RECEIVER_CONTACTS = 1
+        const val RECEIVER_GROUPS = 2
+    }
+}
 
 enum class ContactFilter {
     ALL,

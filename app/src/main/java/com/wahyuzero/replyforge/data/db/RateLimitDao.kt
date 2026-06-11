@@ -1,5 +1,6 @@
 package com.wahyuzero.replyforge.data.db
 
+import androidx.annotation.Keep
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Insert
@@ -11,6 +12,7 @@ import androidx.room.Query
     tableName = "rate_limits",
     primaryKeys = ["ruleId", "contactName"]
 )
+@Keep
 data class RateLimitEntry(
     val ruleId: Long,
     val contactName: String,

@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.wahyuzero.replyforge.R
 import com.wahyuzero.replyforge.data.db.AppDatabase
 import com.wahyuzero.replyforge.databinding.FragmentAiUsageBinding
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +36,7 @@ class AiUsageActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "AI Usage Stats"
+        supportActionBar?.title = getString(R.string.title_ai_usage)
     }
 
     private fun loadUsageStats() {
@@ -70,16 +71,16 @@ class AiUsageActivity : AppCompatActivity() {
     }
 
     private fun displayStats(stats: Stats) {
-        binding.textTodayTokens.text = "Tokens: ${stats.todayTokens}"
-        binding.textTodayCost.text = "Cost: \$${String.format("%.4f", stats.todayCost)}"
-        binding.textTodayCalls.text = "API Calls: ${stats.todayCalls}"
+        binding.textTodayTokens.text = getString(R.string.label_tokens, stats.todayTokens)
+        binding.textTodayCost.text = getString(R.string.label_cost, String.format("%.4f", stats.todayCost))
+        binding.textTodayCalls.text = getString(R.string.label_api_calls, stats.todayCalls)
 
-        binding.textMonthTokens.text = "Tokens: ${stats.monthTokens}"
-        binding.textMonthCost.text = "Cost: \$${String.format("%.4f", stats.monthCost)}"
-        binding.textMonthCalls.text = "API Calls: ${stats.monthCalls}"
+        binding.textMonthTokens.text = getString(R.string.label_tokens, stats.monthTokens)
+        binding.textMonthCost.text = getString(R.string.label_cost, String.format("%.4f", stats.monthCost))
+        binding.textMonthCalls.text = getString(R.string.label_api_calls, stats.monthCalls)
 
-        binding.textTotalTokens.text = "Total Tokens: ${stats.totalTokens}"
-        binding.textTotalCost.text = "Total Estimated Cost: \$${String.format("%.4f", stats.totalCost)}"
+        binding.textTotalTokens.text = getString(R.string.label_total_tokens, stats.totalTokens)
+        binding.textTotalCost.text = getString(R.string.label_total_cost, String.format("%.4f", stats.totalCost))
     }
 
     data class Stats(

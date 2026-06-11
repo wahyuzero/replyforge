@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.wahyuzero.replyforge.R
 import com.wahyuzero.replyforge.data.db.AppDatabase
 import com.wahyuzero.replyforge.data.model.Rule
 import com.wahyuzero.replyforge.databinding.FragmentRulesBinding
@@ -71,15 +72,15 @@ class RulesFragment : Fragment() {
 
     private fun showDeleteDialog(rule: Rule) {
         AlertDialog.Builder(requireContext())
-            .setTitle("Delete Rule")
-            .setMessage("Are you sure you want to delete \"${rule.name}\"?")
-            .setPositiveButton("Delete") { _, _ ->
+            .setTitle(getString(R.string.title_delete_rule))
+            .setMessage(getString(R.string.delete_rule_message, rule.name))
+            .setPositiveButton(getString(R.string.delete)) { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     db.ruleDao().delete(rule)
                 }
-                Toast.makeText(requireContext(), "Rule deleted", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), getString(R.string.rule_deleted), Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
     }
 

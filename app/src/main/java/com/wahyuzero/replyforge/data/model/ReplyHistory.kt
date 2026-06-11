@@ -1,5 +1,6 @@
 package com.wahyuzero.replyforge.data.model
 
+import androidx.annotation.Keep
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -21,6 +22,7 @@ import androidx.room.PrimaryKey
         Index("sender")
     ]
 )
+@Keep
 data class ReplyHistory(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

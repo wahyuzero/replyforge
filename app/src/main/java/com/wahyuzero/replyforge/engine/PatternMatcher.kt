@@ -1,5 +1,6 @@
 package com.wahyuzero.replyforge.engine
 
+import android.util.Log
 import com.wahyuzero.replyforge.ui.rule.MatchType
 import java.text.Normalizer
 
@@ -16,9 +17,18 @@ object PatternMatcher {
 
     private fun getCachedRegex(pattern: String, options: Set<RegexOption>): Regex {
         val key = "${options}:${pattern}"
-        return regexCache.getOrPut(key) {
-            if (regexCache.size > REGEX_CACHE_MAX) regexCache.clear()
+        return regexCache.computeIfAbsent(key) {
             Regex(pattern, options)
+        }.also {
+            if (regexCache.size > REGEX_CACHE_MAX) {
+                val iter = regexCache.entries.iterator()
+                var removed = 0
+                while (iter.hasNext() && removed < REGEX_CACHE_MAX / 2) {
+                    iter.next()
+                    iter.remove()
+                    removed++
+                }
+            }
         }
     }
 
@@ -47,8 +57,8 @@ object PatternMatcher {
 
         // Fuzzy matching via similarity threshold
         if (similarityThreshold > 0) {
-            val p = preprocessText(pattern, caseSensitive, caseInsensitive, ignoreAccents)
-            val m = preprocessText(message, caseSensitive, caseInsensitive, ignoreAccents)
+            val p = preprocessText(pattern, caseSensitive, ignoreAccents)
+            val m = preprocessText(message, caseSensitive, ignoreAccents)
             val similarity = calculateSimilarity(p, m)
             return MatchResult(similarity >= similarityThreshold / 100.0)
         }
@@ -61,8 +71,8 @@ object PatternMatcher {
             return matchRegexWithGroups(pattern, message, useCaseInsensitive)
         }
 
-        val p = preprocessText(pattern, caseSensitive, caseInsensitive, ignoreAccents)
-        val m = preprocessText(message, caseSensitive, caseInsensitive, ignoreAccents)
+        val p = preprocessText(pattern, caseSensitive, ignoreAccents)
+        val m = preprocessText(message, caseSensitive, ignoreAccents)
 
         val matched = when (matchType) {
             MatchType.EXACT -> matchExact(p, m)
@@ -80,7 +90,6 @@ object PatternMatcher {
     private fun preprocessText(
         text: String,
         caseSensitive: Boolean,
-        caseInsensitive: Boolean,
         ignoreAccents: Boolean
     ): String {
         var result = text
@@ -177,17 +186,8 @@ object PatternMatcher {
                 MatchResult(false)
             }
         } catch (e: Exception) {
+            Log.w("PatternMatcher", "Invalid regex pattern: $pattern", e)
             MatchResult(false)
-        }
-    }
-
-    private fun matchRegex(pattern: String, message: String, caseSensitive: Boolean): Boolean {
-        return try {
-            val options = if (caseSensitive) emptySet<RegexOption>() else setOf(RegexOption.IGNORE_CASE)
-            val regex = getCachedRegex(pattern, options)
-            regex.containsMatchIn(message)
-        } catch (e: Exception) {
-            false
         }
     }
 
@@ -211,6 +211,7 @@ object PatternMatcher {
             val regex = Regex(regexPattern)
             regex.matches(message)
         } catch (e: Exception) {
+            Log.w("PatternMatcher", "Invalid wildcard pattern: $pattern", e)
             false
         }
     }

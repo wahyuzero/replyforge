@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import com.wahyuzero.replyforge.R
 import com.wahyuzero.replyforge.databinding.ActivityAboutBinding
 
 class AboutActivity : AppCompatActivity() {
@@ -21,7 +22,7 @@ class AboutActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "About"
+        supportActionBar?.title = getString(R.string.title_about)
     }
 
     override fun onSupportNavigateUp(): Boolean {

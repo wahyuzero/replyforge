@@ -32,7 +32,7 @@ class RuleEditActivity : AppCompatActivity() {
     private var endTime: String? = null
 
     // Phase 3: Active days (1=Mon..7=Sun)
-    private val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    private val dayNames by lazy { resources.getStringArray(R.array.day_abbreviations).toList() }
     private val selectedDays = mutableSetOf(1, 2, 3, 4, 5, 6, 7)
 
     // Phase 4: AI providers for dropdown
@@ -63,7 +63,7 @@ class RuleEditActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = if (ruleId > 0) "Edit Rule" else "New Rule"
+        supportActionBar?.title = if (ruleId > 0) getString(R.string.title_edit_rule) else getString(R.string.title_new_rule)
     }
 
     private fun setupMatchTypeDropdown() {
@@ -97,7 +97,7 @@ class RuleEditActivity : AppCompatActivity() {
             val initialMin = startTime?.split(":")?.getOrNull(1)?.toIntOrNull() ?: 0
             TimePickerDialog(this, { _, hour, minute ->
                 startTime = String.format("%02d:%02d", hour, minute)
-                binding.btnStartTime.text = "Start: $startTime"
+                binding.btnStartTime.text = "${getString(R.string.label_start)}$startTime"
             }, initialHour, initialMin, true).show()
         }
 
@@ -106,7 +106,7 @@ class RuleEditActivity : AppCompatActivity() {
             val initialMin = endTime?.split(":")?.getOrNull(1)?.toIntOrNull() ?: 0
             TimePickerDialog(this, { _, hour, minute ->
                 endTime = String.format("%02d:%02d", hour, minute)
-                binding.btnEndTime.text = "End: $endTime"
+                binding.btnEndTime.text = "${getString(R.string.label_end)}$endTime"
             }, initialHour, initialMin, true).show()
         }
     }
@@ -208,8 +208,8 @@ class RuleEditActivity : AppCompatActivity() {
                 // Phase 3: Load time scheduling
                 startTime = rule.startTime
                 endTime = rule.endTime
-                binding.btnStartTime.text = if (startTime != null) "Start: $startTime" else "Start: --:--"
-                binding.btnEndTime.text = if (endTime != null) "End: $endTime" else "End: --:--"
+                binding.btnStartTime.text = if (startTime != null) "${getString(R.string.label_start)}$startTime" else "${getString(R.string.label_start)}--:--"
+                binding.btnEndTime.text = if (endTime != null) "${getString(R.string.label_end)}$endTime" else "${getString(R.string.label_end)}--:--"
 
                 // Phase 3: Load active days
                 selectedDays.clear()
@@ -288,17 +288,17 @@ class RuleEditActivity : AppCompatActivity() {
         val response = binding.editResponse.text.toString().trim()
 
         if (name.isBlank()) {
-            binding.editName.error = "Name is required"
+            binding.editName.error = getString(R.string.name_required)
             return
         }
 
         if (pattern.isBlank()) {
-            binding.editPattern.error = "Pattern is required"
+            binding.editPattern.error = getString(R.string.pattern_required)
             return
         }
 
         if (response.isBlank()) {
-            binding.editResponse.error = "Response is required (also used as AI fallback)"
+            binding.editResponse.error = getString(R.string.response_required)
             return
         }
 
@@ -460,7 +460,7 @@ class RuleEditActivity : AppCompatActivity() {
                 }
             }
 
-            Toast.makeText(this@RuleEditActivity, "Rule saved", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@RuleEditActivity, getString(R.string.rule_saved), Toast.LENGTH_SHORT).show()
             finish()
         }
     }

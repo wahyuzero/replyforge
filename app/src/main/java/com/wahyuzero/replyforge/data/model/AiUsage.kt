@@ -1,5 +1,6 @@
 package com.wahyuzero.replyforge.data.model
 
+import androidx.annotation.Keep
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -11,6 +12,7 @@ import androidx.room.PrimaryKey
         Index("providerId")
     ]
 )
+@Keep
 data class AiUsage(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

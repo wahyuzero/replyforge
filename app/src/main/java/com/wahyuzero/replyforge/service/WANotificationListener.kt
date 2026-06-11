@@ -13,7 +13,6 @@ import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import com.wahyuzero.replyforge.ReplyForgeApp
 import com.wahyuzero.replyforge.R
@@ -41,6 +40,11 @@ class WANotificationListener : NotificationListenerService() {
 
         private const val KEY_TEXT_REPLY = "key_text_reply"
         private const val EXTRA_CONVERSATION = "android.intent.extra.TEXT"
+
+        const val SENDER_WHATSAPP = "WhatsApp"
+        const val SENDER_YOU = "You"
+        const val MAX_PROCESSED_NOTIFICATIONS = 500
+        const val EVICT_THRESHOLD = 250
     }
 
     private val waPackages = setOf(PACKAGE_WHATSAPP, PACKAGE_WHATSAPP_BUSINESS)
@@ -87,9 +91,9 @@ class WANotificationListener : NotificationListenerService() {
         if (processedNotifications.containsKey(notificationKey)) return
         processedNotifications[notificationKey] = true
 
-        if (processedNotifications.size > 500) {
+        if (processedNotifications.size > MAX_PROCESSED_NOTIFICATIONS) {
             val iter = processedNotifications.keys.iterator()
-            repeat(250) { iter.next(); iter.remove() }
+            repeat(EVICT_THRESHOLD) { iter.next(); iter.remove() }
         }
 
         val isGroup = title.contains(":") || extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)
@@ -106,8 +110,8 @@ class WANotificationListener : NotificationListenerService() {
         }
 
         if (sender.isBlank()) return
-        if (sender.equals("WhatsApp", ignoreCase = true)) return
-        if (sender.equals("You", ignoreCase = true)) return
+        if (sender.equals(SENDER_WHATSAPP, ignoreCase = true)) return
+        if (sender.equals(SENDER_YOU, ignoreCase = true)) return
 
         Log.d(TAG, "WA message from $sender: $text (group=$isGroup)")
 

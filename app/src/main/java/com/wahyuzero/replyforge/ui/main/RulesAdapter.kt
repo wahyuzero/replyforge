@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.wahyuzero.replyforge.R
 import com.wahyuzero.replyforge.data.model.Rule
 import com.wahyuzero.replyforge.databinding.ItemRuleBinding
 import java.text.SimpleDateFormat
@@ -16,6 +17,8 @@ class RulesAdapter(
     private val onToggleClick: (Rule, Boolean) -> Unit,
     private val onLongClick: (Rule) -> Unit
 ) : ListAdapter<Rule, RulesAdapter.RuleViewHolder>(RuleDiffCallback()) {
+
+    private val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RuleViewHolder {
         val binding = ItemRuleBinding.inflate(
@@ -35,13 +38,13 @@ class RulesAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(rule: Rule) {
+            val ctx = itemView.context
             binding.textRuleName.text = rule.name
-            binding.textPattern.text = "Pattern: ${rule.pattern}"
-            binding.textResponse.text = "Reply: ${rule.response}"
+            binding.textPattern.text = "${ctx.getString(R.string.label_pattern)}${rule.pattern}"
+            binding.textResponse.text = "${ctx.getString(R.string.label_reply)}${rule.response}"
             binding.textMatchType.text = rule.matchType.displayName
 
-            val sdf = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
-            binding.textDate.text = sdf.format(Date(rule.updatedAt))
+            binding.textDate.text = dateFormat.format(Date(rule.updatedAt))
 
             binding.switchEnabled.setOnCheckedChangeListener(null)
             binding.switchEnabled.isChecked = rule.enabled

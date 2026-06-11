@@ -1,5 +1,6 @@
 package com.wahyuzero.replyforge.data.model
 
+import androidx.annotation.Keep
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -16,6 +17,7 @@ enum class MessageRole {
         Index("timestamp")
     ]
 )
+@Keep
 data class ConversationMessage(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

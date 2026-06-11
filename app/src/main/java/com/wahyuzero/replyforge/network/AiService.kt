@@ -9,6 +9,7 @@ import com.wahyuzero.replyforge.data.model.AiProviderType
 import com.wahyuzero.replyforge.data.model.AiUsage
 import com.wahyuzero.replyforge.data.model.ConversationMessage
 import com.wahyuzero.replyforge.data.model.MessageRole
+import com.wahyuzero.replyforge.engine.AutoReplyEngine
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -28,6 +29,7 @@ class AiService(
     companion object {
         private const val TAG = "AiService"
         private const val DEFAULT_CONTEXT_WINDOW = 20
+        const val DEFAULT_SYSTEM_PROMPT = "You are a helpful WhatsApp auto-reply assistant. Be concise and friendly."
 
         // Cost per 1M tokens (USD)
         private val COST_RATES = mapOf(
@@ -59,7 +61,7 @@ class AiService(
         val totalTokens: Int = 0
     )
 
-    val okHttpClient = OkHttpClient.Builder()
+    private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -68,13 +70,13 @@ class AiService(
         })
         .build()
 
-    val retrofit = Retrofit.Builder()
+    private val retrofit = Retrofit.Builder()
         .baseUrl("https://api.openai.com/") // Placeholder; actual URL is passed per-request
         .client(okHttpClient)
         .addConverterFactory(GsonConverterFactory.create())
         .build()
 
-    val apiClient = retrofit.create(AiApiClient::class.java)
+    private val apiClient = retrofit.create(AiApiClient::class.java)
 
     /**
      * Get AI reply for an incoming message.
@@ -114,7 +116,7 @@ class AiService(
             val messages = mutableListOf<ChatMessage>()
 
             // System prompt
-            val sysPrompt = systemPrompt ?: "You are a helpful WhatsApp auto-reply assistant. Be concise and friendly."
+            val sysPrompt = systemPrompt ?: DEFAULT_SYSTEM_PROMPT
             messages.add(ChatMessage(role = "system", content = sysPrompt))
 
             // Add conversation history
@@ -154,7 +156,7 @@ class AiService(
                 conversationDao.deleteLastMessage(contactName)
                 return null
             }
-            val replyText = if (rawContent.length > 1000) rawContent.substring(0, 1000) + "…" else rawContent
+            val replyText = if (rawContent.length > AutoReplyEngine.WHATSAPP_MSG_LIMIT) rawContent.substring(0, AutoReplyEngine.WHATSAPP_MSG_LIMIT) + "…" else rawContent
 
             // Save assistant response to conversation memory
             conversationDao.insert(

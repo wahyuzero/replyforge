@@ -1,5 +1,6 @@
 package com.wahyuzero.replyforge.data.model
 
+import androidx.annotation.Keep
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -17,6 +18,7 @@ enum class AiProviderType {
         Index("type")
     ]
 )
+@Keep
 data class AiProvider(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

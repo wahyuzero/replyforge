@@ -97,6 +97,29 @@ class Converters {
     }
 }
 
+val HOLIDAY_DATA = listOf(
+    Triple("Tahun Baru 2026", "2026-01-01", true),
+    Triple("Idul Fitri 1447 H", "2026-03-30", false),
+    Triple("Idul Fitri 1447 H (Day 2)", "2026-03-31", false),
+    Triple("Hari Buruh Internasional", "2026-05-01", true),
+    Triple("Hari Waisak 2570 BE", "2026-05-12", false),
+    Triple("Hari Lahir Pancasila", "2026-06-01", true),
+    Triple("Idul Adha 1447 H", "2026-06-06", false),
+    Triple("Kemerdekaan RI", "2026-08-17", true),
+    Triple("Maulid Nabi Muhammad SAW", "2026-09-05", false),
+    Triple("Hari Natal", "2026-12-25", true),
+    Triple("Tahun Baru 2027", "2026-12-31", false)
+)
+
+private fun insertHolidays(db: SupportSQLiteDatabase) {
+    for ((name, date, recurring) in HOLIDAY_DATA) {
+        db.execSQL(
+            "INSERT OR IGNORE INTO holidays (name, date, isRecurringAnnual) VALUES (?, ?, ?)",
+            arrayOf(name, date, if (recurring) 1 else 0)
+        )
+    }
+}
+
 val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         // Add new columns to rules table
@@ -131,25 +154,7 @@ val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
         """)
 
         // Pre-populate Indonesian national holidays 2026
-        val holidays = listOf(
-            Triple("Tahun Baru 2026", "2026-01-01", true),
-            Triple("Idul Fitri 1447 H", "2026-03-30", false),
-            Triple("Idul Fitri 1447 H (Day 2)", "2026-03-31", false),
-            Triple("Hari Buruh Internasional", "2026-05-01", true),
-            Triple("Hari Waisak 2570 BE", "2026-05-12", false),
-            Triple("Hari Lahir Pancasila", "2026-06-01", true),
-            Triple("Idul Adha 1447 H", "2026-06-06", false),
-            Triple("Kemerdekaan RI", "2026-08-17", true),
-            Triple("Maulid Nabi Muhammad SAW", "2026-09-05", false),
-            Triple("Hari Natal", "2026-12-25", true),
-            Triple("Tahun Baru 2027", "2026-12-31", false)
-        )
-        for ((name, date, recurring) in holidays) {
-            db.execSQL(
-                "INSERT OR IGNORE INTO holidays (name, date, isRecurringAnnual) VALUES (?, ?, ?)",
-                arrayOf(name, date, if (recurring) 1 else 0)
-            )
-        }
+        insertHolidays(db)
     }
 }
 
@@ -263,6 +268,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun aiUsageDao(): AiUsageDao
 
     companion object {
+        const val DATABASE_NAME = "replyforge_db"
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -271,32 +278,14 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "replyforge_db"
+                    DATABASE_NAME
                 )
                     .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
                             // Pre-populate holidays on fresh install
-                            val holidays = listOf(
-                                Triple("Tahun Baru 2026", "2026-01-01", true),
-                                Triple("Idul Fitri 1447 H", "2026-03-30", false),
-                                Triple("Idul Fitri 1447 H (Day 2)", "2026-03-31", false),
-                                Triple("Hari Buruh Internasional", "2026-05-01", true),
-                                Triple("Hari Waisak 2570 BE", "2026-05-12", false),
-                                Triple("Hari Lahir Pancasila", "2026-06-01", true),
-                                Triple("Idul Adha 1447 H", "2026-06-06", false),
-                                Triple("Kemerdekaan RI", "2026-08-17", true),
-                                Triple("Maulid Nabi Muhammad SAW", "2026-09-05", false),
-                                Triple("Hari Natal", "2026-12-25", true),
-                                Triple("Tahun Baru 2027", "2026-12-31", false)
-                            )
-                            for ((name, date, recurring) in holidays) {
-                                db.execSQL(
-                                    "INSERT OR IGNORE INTO holidays (name, date, isRecurringAnnual) VALUES (?, ?, ?)",
-                                    arrayOf(name, date, if (recurring) 1 else 0)
-                                )
-                            }
+                            insertHolidays(db)
                         }
                     })
                     .fallbackToDestructiveMigrationFrom(1, 2, 3, 4)

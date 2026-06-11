@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -112,10 +113,10 @@ class WelcomeActivity : AppCompatActivity() {
 
     private fun updateButton(position: Int) {
         binding.buttonNext.text = when (position) {
-            0 -> "Next"
-            1 -> "Grant Notification Access"
-            2 -> "Get Started"
-            else -> "Next"
+            0 -> getString(R.string.welcome_next)
+            1 -> getString(R.string.welcome_grant_permission)
+            2 -> getString(R.string.welcome_done)
+            else -> getString(R.string.welcome_next)
         }
     }
 
@@ -125,6 +126,7 @@ class WelcomeActivity : AppCompatActivity() {
             startActivity(intent)
             binding.viewPager.currentItem = 2
         } catch (e: Exception) {
+            Log.w("WelcomeActivity", "Failed to open notification settings", e)
             binding.viewPager.currentItem = 2
         }
     }

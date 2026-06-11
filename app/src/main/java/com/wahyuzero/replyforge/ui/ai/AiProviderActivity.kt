@@ -44,7 +44,7 @@ class AiProviderActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "AI Providers"
+        supportActionBar?.title = getString(R.string.title_ai_providers)
     }
 
     private fun setupRecyclerView() {
@@ -112,7 +112,7 @@ class AiProviderActivity : AppCompatActivity() {
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setTitle(if (existingProvider != null) "Edit Provider" else "Add AI Provider")
+            .setTitle(if (existingProvider != null) getString(R.string.title_edit_provider) else getString(R.string.title_add_provider))
             .setView(dialogView)
             .setPositiveButton("Save", null)
             .setNegativeButton("Cancel", null)
@@ -130,7 +130,7 @@ class AiProviderActivity : AppCompatActivity() {
                 val temperature = editTemperature.text.toString().toFloatOrNull() ?: 0.7f
 
                 if (name.isBlank() || baseUrl.isBlank() || apiKey.isBlank() || modelName.isBlank()) {
-                    Toast.makeText(this, "All fields are required", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.all_fields_required), Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
 
@@ -164,7 +164,7 @@ class AiProviderActivity : AppCompatActivity() {
                     }
                 }
 
-                Toast.makeText(this, if (existingProvider != null) "Provider updated" else "Provider added", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, if (existingProvider != null) getString(R.string.provider_updated) else getString(R.string.provider_added), Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
         }
@@ -174,8 +174,8 @@ class AiProviderActivity : AppCompatActivity() {
 
     private fun showDeleteConfirm(provider: AiProvider) {
         AlertDialog.Builder(this)
-            .setTitle("Delete Provider")
-            .setMessage("Delete \"${provider.name}\"? Rules using this provider will fall back to static replies.")
+            .setTitle(getString(R.string.title_delete_provider))
+            .setMessage(getString(R.string.delete_provider_message, provider.name))
             .setPositiveButton("Delete") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     db.aiProviderDao().delete(provider)
@@ -199,8 +199,23 @@ class AiProviderActivity : AppCompatActivity() {
         private var items: List<AiProvider> = emptyList()
 
         fun submitList(newItems: List<AiProvider>) {
+            val oldSize = items.size
             items = newItems
-            notifyDataSetChanged()
+            val newSize = items.size
+            when {
+                oldSize == 0 && newSize > 0 -> notifyItemRangeInserted(0, newSize)
+                newSize == 0 && oldSize > 0 -> notifyItemRangeRemoved(0, oldSize)
+                newSize == oldSize -> notifyItemRangeChanged(0, newSize)
+                else -> {
+                    if (newSize > oldSize) {
+                        notifyItemRangeChanged(0, oldSize)
+                        notifyItemRangeInserted(oldSize, newSize - oldSize)
+                    } else {
+                        notifyItemRangeChanged(0, newSize)
+                        notifyItemRangeRemoved(newSize, oldSize - newSize)
+                    }
+                }
+            }
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ProviderViewHolder {
