@@ -4,9 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.RemoteInput
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.service.notification.NotificationListenerService
@@ -28,6 +30,19 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+/**
+ * WhatsApp Notification Listener — based on Watomatic/AutoResponder approach.
+ *
+ * Reply strategies (in order):
+ * 1. Direct notification action with RemoteInput (standard)
+ * 2. WearableExtender hidden actions (Android Wear reply)
+ * 3. Car extensions (android.car.EXTENSIONS bundle)
+ * 4. Delayed re-check of active notifications (WA sends dupes, some with actions)
+ * 5. Search ALL active WA notifications for any reply action
+ *
+ * Key: Uses RemoteInput.addResultsToIntent() — the proper Android API for
+ * notification replies, same mechanism Android Wear uses.
+ */
 class WANotificationListener : NotificationListenerService() {
 
     companion object {
@@ -37,8 +52,9 @@ class WANotificationListener : NotificationListenerService() {
         private const val PACKAGE_WHATSAPP = "com.whatsapp"
         private const val PACKAGE_WHATSAPP_BUSINESS = "com.whatsapp.w4b"
         const val SENDER_WHATSAPP = "WhatsApp"
-        const val MAX_PROCESSED_NOTIFICATIONS = 500
+        const val MAX_PROCESSED = 500
         const val EVICT_THRESHOLD = 250
+        const val RECHECK_DELAY_MS = 500L
         private val SELF_NAMES = setOf("You", "Anda", "you", "anda")
     }
 
@@ -50,6 +66,8 @@ class WANotificationListener : NotificationListenerService() {
     private val handler = Handler(Looper.getMainLooper())
     private val processedNotifications = java.util.LinkedHashMap<String, Boolean>(512, 0.75f, true)
 
+    // ── Lifecycle ──────────────────────────────────────────────
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "=== SERVICE onCreate ===")
@@ -58,7 +76,10 @@ class WANotificationListener : NotificationListenerService() {
             val db = AppDatabase.getInstance(this)
             appPrefs = app.appPrefs
             aiService = AiService(db.conversationDao(), db.aiUsageDao())
-            autoReplyEngine = AutoReplyEngine(db.ruleDao(), db.historyDao(), appPrefs, db.holidayDao(), db.rateLimitDao(), db.aiProviderDao(), aiService)
+            autoReplyEngine = AutoReplyEngine(
+                db.ruleDao(), db.historyDao(), appPrefs,
+                db.holidayDao(), db.rateLimitDao(), db.aiProviderDao(), aiService
+            )
             createNotificationChannel()
             startForeground()
             Log.d(TAG, "=== SERVICE onCreate SUCCESS ===")
@@ -77,6 +98,20 @@ class WANotificationListener : NotificationListenerService() {
         }
     }
 
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        Log.d(TAG, "=== LISTENER DISCONNECTED ===")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "=== SERVICE DESTROYED ===")
+        serviceScope.cancel()
+        handler.removeCallbacksAndMessages(null)
+    }
+
+    // ── Notification Handler ───────────────────────────────────
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
@@ -87,17 +122,18 @@ class WANotificationListener : NotificationListenerService() {
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: return
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
 
-        Log.d(TAG, "=== WA NOTIF: title='$title' text='${text.take(80)}' id=${sbn.id} tag=${sbn.tag} ===")
+        Log.d(TAG, "=== WA NOTIF: title='$title' text='${text.take(60)}' id=${sbn.id} ===")
 
         if (title.isBlank() || text.isBlank()) return
 
-        val notificationKey = sbn.key ?: return
-        if (processedNotifications.containsKey(notificationKey)) {
-            Log.d(TAG, "Already processed: $notificationKey")
+        // Dedup by notification key
+        val notifKey = sbn.key ?: return
+        if (processedNotifications.containsKey(notifKey)) {
+            Log.d(TAG, "Already processed: $notifKey")
             return
         }
-        processedNotifications[notificationKey] = true
-        if (processedNotifications.size > MAX_PROCESSED_NOTIFICATIONS) {
+        processedNotifications[notifKey] = true
+        if (processedNotifications.size > MAX_PROCESSED) {
             val iter = processedNotifications.keys.iterator()
             repeat(EVICT_THRESHOLD) { iter.next(); iter.remove() }
         }
@@ -121,22 +157,20 @@ class WANotificationListener : NotificationListenerService() {
         }
 
         Log.d(TAG, ">>> PROCESSING: from=$sender msg='$text' isGroup=$isGroup <<<")
-
-        // Dump ALL actions from every source for this notification
-        dumpAllActions(notification, sbn.id)
+        dumpAllActions(notification)
 
         serviceScope.launch {
             try {
                 val result = autoReplyEngine.processIncomingMessage(sender, text, isGroup, groupName)
                 if (result != null) {
-                    Log.d(TAG, "=== MATCH: rule='${result.matchedRule.name}' delay=${result.delayMs}ms reply='${result.replyText}' ===")
+                    Log.d(TAG, "=== MATCH: rule='${result.matchedRule.name}' delay=${result.delayMs}ms ===")
                     handler.postDelayed({ sendReply(sbn, result) }, result.delayMs)
                 } else {
                     Log.d(TAG, "No matching rule for '$text'")
                     val db = AppDatabase.getInstance(this@WANotificationListener)
                     val rules = db.ruleDao().getEnabledRules().first()
                     Log.d(TAG, "Enabled rules: ${rules.size}")
-                    rules.forEach { Log.d(TAG, "  Rule: '${it.name}' pattern='${it.pattern}' matchType=${it.matchType}") }
+                    rules.forEach { Log.d(TAG, "  Rule: '${it.name}' pattern='${it.pattern}'") }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing message", e)
@@ -144,153 +178,258 @@ class WANotificationListener : NotificationListenerService() {
         }
     }
 
-    /**
-     * Dump all possible action sources for debugging
-     */
-    private fun dumpAllActions(notification: Notification, notifId: Int) {
-        // 1. Standard actions
+    // ── Debug Dump ─────────────────────────────────────────────
+
+    private fun dumpAllActions(notification: Notification) {
+        // Standard actions
         val stdActions = notification.actions
-        Log.d(TAG, "  Standard actions: ${stdActions?.size ?: 0}")
+        Log.d(TAG, "  Std actions: ${stdActions?.size ?: 0}")
         stdActions?.forEachIndexed { i, a ->
-            val hasRI = a.remoteInputs?.isNotEmpty() == true
-            Log.d(TAG, "    Std[$i]: name='${a.title}' remoteInput=$hasRI")
+            val ri = a.remoteInputs
+            Log.d(TAG, "    Std[$i]: '${a.title}' remoteInputs=${ri?.size ?: 0}")
         }
 
-        // 2. WearableExtender actions (hidden reply actions!)
-        val wearableActions = NotificationCompat.WearableExtender(notification).actions
-        Log.d(TAG, "  Wearable actions: ${wearableActions.size}")
-        wearableActions.forEachIndexed { i, a ->
-            val hasRI = a.remoteInputs?.isNotEmpty() == true
-            Log.d(TAG, "    Wear[$i]: name='${a.title}' remoteInput=$hasRI")
+        // WearableExtender
+        val wearActions = NotificationCompat.WearableExtender(notification).actions
+        Log.d(TAG, "  Wear actions: ${wearActions.size}")
+        wearActions.forEachIndexed { i, a ->
+            val ri = a.remoteInputs
+            Log.d(TAG, "    Wear[$i]: '${a.title}' remoteInputs=${ri?.size ?: 0}")
         }
 
-        // 3. NotificationCompat actions (unwraps all)
-        val compatActionCount = try {
-            var count = 0
-            while (true) {
-                val a = NotificationCompat.getAction(notification, count)
-                if (a == null) break
-                count++
+        // Compat action count
+        val compatCount = NotificationCompat.getActionCount(notification)
+        Log.d(TAG, "  Compat action count: $compatCount")
+
+        // Car extensions
+        try {
+            val carExt = notification.extras?.getBundle("android.car.EXTENSIONS")
+            if (carExt != null) {
+                Log.d(TAG, "  Car extensions found: ${carExt.keySet()}")
+                val conv = carExt.getBundle("car_conversation")
+                if (conv != null) {
+                    Log.d(TAG, "  Car conversation keys: ${conv.keySet()}")
+                }
             }
-            count
-        } catch (e: Exception) { 0 }
-        Log.d(TAG, "  NotificationCompat action count: $compatActionCount")
+        } catch (_: Exception) {}
     }
 
+    // ── Reply Action Extraction ────────────────────────────────
+
     /**
-     * Find a reply action from a notification using ALL possible sources:
-     * 1. Standard notification.actions
-     * 2. NotificationCompat.WearableExtender actions
-     * 3. NotificationCompat.getAction (unwraps all)
+     * Holds everything needed to send a notification reply.
+     * Based on Watomatic's NotificationWear pattern.
      */
     private data class ReplyAction(
-        val actionIntent: PendingIntent,
-        val resultKeys: List<String>,
+        val pendingIntent: PendingIntent,
+        val remoteInputs: Array<RemoteInput>,
         val source: String
     )
 
-    private fun findReplyActionInNotification(notification: Notification): ReplyAction? {
-        // Strategy 1: Standard actions with RemoteInput
+    /**
+     * Extract reply action from a single notification.
+     * Tries: standard → wearable → compat → car extensions.
+     *
+     * Key difference from previous attempts:
+     * - Checks allowFreeFormInput (must be true for text reply)
+     * - Stores actual RemoteInput objects (needed for addResultsToIntent)
+     * - Checks car extensions bundle
+     */
+    private fun extractReplyAction(notification: Notification): ReplyAction? {
+        // ── Strategy 1: Standard notification.actions ──
         notification.actions?.forEach { action ->
-            val ri = action.remoteInputs
-            if (ri != null && ri.isNotEmpty()) {
-                Log.d(TAG, "  → Found reply via standard action: '${action.title}'")
-                return ReplyAction(
-                    action.actionIntent,
-                    ri.map { it.resultKey },
-                    "standard"
-                )
+            val remoteInputs = action.remoteInputs
+            if (remoteInputs != null && remoteInputs.isNotEmpty()) {
+                for (ri in remoteInputs) {
+                    if (ri.allowFreeFormInput) {
+                        Log.d(TAG, "  → Reply via STANDARD: '${action.title}' key='${ri.resultKey}'")
+                        return ReplyAction(action.actionIntent, remoteInputs, "standard")
+                    }
+                }
             }
         }
 
-        // Strategy 2: WearableExtender actions
-        val wearableActions = NotificationCompat.WearableExtender(notification).actions
-        for (wAction in wearableActions) {
-            val ri = wAction.remoteInputs
-            if (ri != null && ri.isNotEmpty()) {
-                Log.d(TAG, "  → Found reply via WearableExtender: '${wAction.title}'")
-                return ReplyAction(
-                    wAction.actionIntent ?: continue,
-                    ri.map { it.resultKey },
-                    "wearable"
-                )
+        // ── Strategy 2: WearableExtender hidden actions ──
+        val wearActions = NotificationCompat.WearableExtender(notification).actions
+        for (wAction in wearActions) {
+            val compatRemoteInputs = wAction.remoteInputs
+            if (compatRemoteInputs != null && compatRemoteInputs.isNotEmpty()) {
+                for (ri in compatRemoteInputs) {
+                    if (ri.allowFreeFormInput) {
+                        Log.d(TAG, "  → Reply via WEARABLE: '${wAction.title}' key='${ri.resultKey}'")
+                        val pi = wAction.actionIntent ?: continue
+                        // Build framework RemoteInput from compat RemoteInput
+                        val frameworkInputs = compatRemoteInputs.map { cri ->
+                            RemoteInput.Builder(cri.resultKey)
+                                .setLabel(cri.label)
+                                .setChoices(cri.choices)
+                                .setAllowFreeFormInput(cri.allowFreeFormInput)
+                                .build()
+                        }.toTypedArray()
+                        return ReplyAction(pi, frameworkInputs, "wearable")
+                    }
+                }
             }
         }
 
-        // Strategy 3: NotificationCompat.getAction
-        var idx = 0
-        while (true) {
-            val compatAction = NotificationCompat.getAction(notification, idx) ?: break
-            val ri = compatAction.remoteInputs
-            if (ri != null && ri.isNotEmpty()) {
-                Log.d(TAG, "  → Found reply via NotificationCompat.getAction[$idx]: '${compatAction.title}'")
-                return ReplyAction(
-                    compatAction.actionIntent ?: break,
-                    ri.map { it.resultKey },
-                    "compat"
-                )
+        // ── Strategy 3: NotificationCompat.getAction (unwraps all) ──
+        val actionCount = NotificationCompat.getActionCount(notification)
+        for (i in 0 until actionCount) {
+            val compatAction = NotificationCompat.getAction(notification, i) ?: continue
+            val compatRemoteInputs = compatAction.remoteInputs
+            if (compatRemoteInputs != null && compatRemoteInputs.isNotEmpty()) {
+                for (ri in compatRemoteInputs) {
+                    if (ri.allowFreeFormInput) {
+                        Log.d(TAG, "  → Reply via COMPAT[$i]: '${compatAction.title}' key='${ri.resultKey}'")
+                        val pi = compatAction.actionIntent ?: continue
+                        val frameworkInputs = compatRemoteInputs.map { cri ->
+                            RemoteInput.Builder(cri.resultKey)
+                                .setLabel(cri.label)
+                                .setChoices(cri.choices)
+                                .setAllowFreeFormInput(cri.allowFreeFormInput)
+                                .build()
+                        }.toTypedArray()
+                        return ReplyAction(pi, frameworkInputs, "compat")
+                    }
+                }
             }
-            idx++
+        }
+
+        // ── Strategy 4: Car extensions ──
+        try {
+            val carExt = notification.extras?.getBundle("android.car.EXTENSIONS")
+            val conv = carExt?.getBundle("car_conversation")
+            val replyPi = conv?.getParcelable<PendingIntent>("on_reply")
+            if (replyPi != null) {
+                // Car reply uses a specific result key
+                val replyKey = conv.getString("reply_key", "reply")
+                val ri = RemoteInput.Builder(replyKey)
+                    .setAllowFreeFormInput(true)
+                    .build()
+                Log.d(TAG, "  → Reply via CAR_EXTENSIONS")
+                return ReplyAction(replyPi, arrayOf(ri), "car")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Car extension extraction failed", e)
         }
 
         return null
     }
 
+    // ── Send Reply ─────────────────────────────────────────────
+
+    /**
+     * Attempt to send reply using multiple strategies.
+     * 1. Extract from current notification
+     * 2. Delayed re-check (WA sends dupes with actions)
+     * 3. Search all active WA notifications
+     */
     private fun sendReply(sbn: StatusBarNotification, result: ReplyResult) {
         val notification = sbn.notification ?: return
 
-        // Strategy 1: Find reply action in THIS notification (all sources)
-        val found = findReplyActionInNotification(notification)
-        if (found != null) {
-            Log.d(TAG, "Using reply from current notif (source=${found.source})")
-            if (executeReply(found, result)) {
+        // Strategy 1: Direct from current notification
+        val direct = extractReplyAction(notification)
+        if (direct != null) {
+            Log.d(TAG, "Using reply from current notif (${direct.source})")
+            if (executeReply(direct, result)) {
                 logReply(result)
                 return
             }
         }
 
-        // Strategy 2: Search active WA notifications for reply action
-        Log.w(TAG, "No reply in current notification, searching active notifications...")
-        val activeSbns = activeNotifications ?: emptyArray()
-        for (activeSbn in activeSbns) {
-            if (activeSbn.packageName !in waPackages) continue
-            if (activeSbn.key == sbn.key) continue
+        // Strategy 2: Search all active WA notifications right now
+        Log.w(TAG, "No reply action in current notif, searching active...")
+        if (searchActiveAndSend(sbn, result)) return
 
-            val activeNotif = activeSbn.notification ?: continue
-            val activeFound = findReplyActionInNotification(activeNotif)
-            if (activeFound != null) {
-                Log.d(TAG, "  → Using reply from active notif id=${activeSbn.id} (source=${activeFound.source})")
-                if (executeReply(activeFound, result)) {
+        // Strategy 3: Delayed re-check (WA sends duplicate notifications,
+        // sometimes the second one has reply actions)
+        Log.d(TAG, "Scheduling delayed re-check in ${RECHECK_DELAY_MS}ms...")
+        handler.postDelayed({
+            Log.d(TAG, "=== DELAYED RE-CHECK ===")
+            // Re-check current notification first
+            val recheck = extractReplyAction(notification)
+            if (recheck != null) {
+                Log.d(TAG, "Delayed: found reply in current notif (${recheck.source})")
+                if (executeReply(recheck, result)) {
                     logReply(result)
-                    return
+                    return@postDelayed
                 }
             }
-        }
-
-        Log.e(TAG, "=== ALL REPLY STRATEGIES FAILED ===")
-        Log.e(TAG, "Cannot send reply to '${result.sender}'. No usable reply action found.")
-        Log.e(TAG, "WhatsApp might need 'Show on lock screen' enabled in notification settings.")
+            // Then search all active
+            if (!searchActiveAndSend(sbn, result)) {
+                Log.e(TAG, "=== ALL STRATEGIES FAILED ===")
+                Log.e(TAG, "Tip: Check WhatsApp notification settings → 'Conversation notifications' ON")
+                Log.e(TAG, "Tip: Lock screen → 'Show all notification content'")
+                Log.e(TAG, "Tip: MIUI → Settings → Notifications → Full Screen Notification → enable WA")
+            }
+        }, RECHECK_DELAY_MS)
     }
 
     /**
-     * Execute a reply using a ReplyAction
+     * Search all active WA notifications for a reply action.
+     * Returns true if reply was sent.
+     */
+    private fun searchActiveAndSend(currentSbn: StatusBarNotification, result: ReplyResult): Boolean {
+        val activeSbns = activeNotifications ?: emptyArray()
+
+        for (activeSbn in activeSbns) {
+            if (activeSbn.packageName !in waPackages) continue
+            // Try ALL notifications including current (it might have changed)
+
+            val activeNotif = activeSbn.notification ?: continue
+            val found = extractReplyAction(activeNotif)
+            if (found != null) {
+                Log.d(TAG, "  → Found reply in active notif id=${activeSbn.id} (${found.source})")
+                if (executeReply(found, result)) {
+                    logReply(result)
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /**
+     * Execute a notification reply using RemoteInput.addResultsToIntent().
+     *
+     * This is the CRITICAL function — same API Android Wear uses to reply.
+     * Previous attempts failed because they used Intent.putExtras(bundle)
+     * instead of RemoteInput.addResultsToIntent().
+     *
+     * The proper way (from Watomatic source):
+     * 1. Create Bundle with reply text keyed to RemoteInput.resultKey
+     * 2. Use RemoteInput.addResultsToIntent() to attach results
+     * 3. Send via PendingIntent.send()
      */
     private fun executeReply(replyAction: ReplyAction, result: ReplyResult): Boolean {
         return try {
-            val bundle = android.os.Bundle()
-            for (key in replyAction.resultKeys) {
-                bundle.putCharSequence(key, result.replyText)
-            }
-            val intent = Intent()
-            intent.putExtras(bundle)
-            replyAction.actionIntent.send(applicationContext, 0, intent)
+            // Find the best RemoteInput (prefer allowFreeFormInput)
+            val bestRemoteInput = replyAction.remoteInputs.firstOrNull { it.allowFreeFormInput }
+                ?: replyAction.remoteInputs.firstOrNull()
+                ?: return false
+
+            // Build the reply bundle
+            val replyBundle = Bundle()
+            replyBundle.putCharSequence(bestRemoteInput.resultKey, result.replyText)
+
+            // Create intent and add RemoteInput results
+            // THIS IS THE KEY LINE — different from our previous approach
+            val replyIntent = Intent()
+            replyIntent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            RemoteInput.addResultsToIntent(replyAction.remoteInputs, replyIntent, replyBundle)
+
+            // Send via PendingIntent
+            replyAction.pendingIntent.send(applicationContext, 0, replyIntent)
+
             Log.d(TAG, "=== REPLY SENT: '${result.replyText}' via ${replyAction.source} ===")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Reply execution failed", e)
+            Log.e(TAG, "Reply execution failed (${replyAction.source})", e)
             false
         }
     }
+
+    // ── Logging ────────────────────────────────────────────────
 
     private fun logReply(result: ReplyResult) {
         serviceScope.launch {
@@ -301,6 +440,8 @@ class WANotificationListener : NotificationListenerService() {
             Log.d(TAG, "Reply logged to history")
         }
     }
+
+    // ── Foreground Service ─────────────────────────────────────
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -333,17 +474,5 @@ class WANotificationListener : NotificationListenerService() {
             .build()
         startForeground(FOREGROUND_NOTIFICATION_ID, notification)
         Log.d(TAG, "=== FOREGROUND SERVICE STARTED ===")
-    }
-
-    override fun onListenerDisconnected() {
-        super.onListenerDisconnected()
-        Log.d(TAG, "=== LISTENER DISCONNECTED ===")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        Log.d(TAG, "=== SERVICE DESTROYED ===")
-        serviceScope.cancel()
-        handler.removeCallbacksAndMessages(null)
     }
 }
