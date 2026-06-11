@@ -288,7 +288,7 @@ abstract class AppDatabase : RoomDatabase() {
                             insertHolidays(db)
                         }
                     })
-                    .fallbackToDestructiveMigrationFrom(1, 2, 3, 4)
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
