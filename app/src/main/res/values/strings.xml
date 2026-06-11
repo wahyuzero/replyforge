@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ReplyForge</string>
+
+    <!-- Tabs -->
+    <string name="tab_rules">Rules</string>
+    <string name="tab_history">History</string>
+
+    <string name="tab_stats">Stats</string>
+
+    <!-- Actions -->
+    <string name="add_rule">Add Rule</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+
+    <!-- Menu -->
+    <string name="action_toggle">Auto-Reply</string>
+    <string name="action_settings">Settings</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name">ReplyForge Service</string>
+    <string name="notification_channel_desc">Keeps the auto-reply service running</string>
+    <string name="service_notification_title">ReplyForge Active</string>
+    <string name="service_notification_text">Monitoring WhatsApp notifications</string>
+
+    <!-- Status Messages -->
+    <string name="auto_reply_enabled">Auto-reply enabled</string>
+    <string name="auto_reply_disabled">Auto-reply disabled</string>
+    <string name="notification_access_required">Notification access is required. Please enable it in Settings.</string>
+    <string name="rule_saved">Rule saved</string>
+    <string name="rule_deleted">Rule deleted</string>
+    <string name="history_cleared">History cleared</string>
+
+    <!-- Welcome -->
+    <string name="welcome_title">Welcome</string>
+    <string name="welcome_next">Next</string>
+    <string name="welcome_grant_permission">Grant Notification Access</string>
+    <string name="welcome_done">Get Started</string>
+</resources>

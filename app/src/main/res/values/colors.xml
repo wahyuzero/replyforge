@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WhatsApp Green Palette -->
+    <color name="wa_green">#FF25D366</color>
+    <color name="wa_green_dark">#FF128C7E</color>
+    <color name="wa_green_darker">#FF075E54</color>
+    <color name="wa_green_status">#FF054D44</color>
+    <color name="wa_green_light">#FFDCF8C6</color>
+    <color name="wa_background">#FFECE5DD</color>
+
+    <!-- Legacy aliases (referenced in layouts) -->
+    <color name="purple_200">#FF25D366</color>
+    <color name="purple_500">#FF25D366</color>
+    <color name="purple_700">#FF075E54</color>
+    <color name="teal_200">#FF25D366</color>
+    <color name="teal_700">#FF128C7E</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Material 3 Theme Colors — WhatsApp Green -->
+    <color name="md_theme_primary">#FF075E54</color>
+    <color name="md_theme_onPrimary">#FFFFFFFF</color>
+    <color name="md_theme_primaryContainer">#FFB2DFDB</color>
+    <color name="md_theme_onPrimaryContainer">#FF00251A</color>
+    <color name="md_theme_secondary">#FF128C7E</color>
+    <color name="md_theme_onSecondary">#FFFFFFFF</color>
+    <color name="md_theme_secondaryContainer">#FFB2DFDB</color>
+    <color name="md_theme_onSecondaryContainer">#FF00251A</color>
+    <color name="md_theme_tertiary">#FF25D366</color>
+    <color name="md_theme_onTertiary">#FFFFFFFF</color>
+    <color name="md_theme_tertiaryContainer">#FFDCF8C6</color>
+    <color name="md_theme_onTertiaryContainer">#FF00210D</color>
+    <color name="md_theme_error">#FFB3261E</color>
+    <color name="md_theme_onError">#FFFFFFFF</color>
+    <color name="md_theme_errorContainer">#FFF9DEDC</color>
+    <color name="md_theme_onErrorContainer">#FF410E0B</color>
+    <color name="md_theme_background">#FFECE5DD</color>
+    <color name="md_theme_onBackground">#FF1C1B1F</color>
+    <color name="md_theme_surface">#FFFBFE</color>
+    <color name="md_theme_onSurface">#FF1C1B1F</color>
+    <color name="md_theme_surfaceVariant">#FFE0E0E0</color>
+    <color name="md_theme_onSurfaceVariant">#FF49454F</color>
+    <color name="md_theme_outline">#FF79747E</color>
+    <color name="md_theme_outlineVariant">#FFB0BEC5</color>
+</resources>
