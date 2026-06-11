@@ -41,12 +41,12 @@ class WANotificationListener : NotificationListenerService() {
 
         const val SENDER_WHATSAPP = "WhatsApp"
         const val SENDER_YOU = "You"
+        const val SENDER_YOU_ID = "Anda"  // Indonesian localization of "You"
         const val MAX_PROCESSED_NOTIFICATIONS = 500
         const val EVICT_THRESHOLD = 250
     }
 
     private val waPackages = setOf(PACKAGE_WHATSAPP, PACKAGE_WHATSAPP_BUSINESS)
-
     private lateinit var autoReplyEngine: AutoReplyEngine
     private lateinit var appPrefs: AppPrefs
     private lateinit var aiService: AiService
@@ -75,8 +75,7 @@ class WANotificationListener : NotificationListenerService() {
         super.onListenerConnected()
         Log.d(TAG, "=== LISTENER CONNECTED ===")
         Log.d(TAG, "Active notifications: ${activeNotifications?.size ?: 0}")
-        
-        // Log current status
+
         serviceScope.launch {
             val enabled = appPrefs.autoReplyEnabled.first()
             Log.d(TAG, "Auto-reply enabled in prefs: $enabled")
@@ -85,39 +84,18 @@ class WANotificationListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
-        if (sbn == null) {
-            Log.d(TAG, "Notification posted: NULL")
-            return
-        }
+        if (sbn == null) return
 
         val packageName = sbn.packageName
-        
-        // Log ALL notifications for debugging
-        if (packageName in waPackages) {
-            Log.d(TAG, "=== WA NOTIFICATION: pkg=$packageName ===")
-        } else {
-            // Skip non-WA silently but log first few
-            return
-        }
+        if (packageName !in waPackages) return
 
-        val notification = sbn.notification ?: run {
-            Log.d(TAG, "WA notification: NULL notification object")
-            return
-        }
-        val extras = notification.extras ?: run {
-            Log.d(TAG, "WA notification: NULL extras")
-            return
-        }
+        val notification = sbn.notification ?: return
+        val extras = notification.extras ?: return
 
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: run {
-            Log.d(TAG, "WA notification: NULL title. Extra keys: ${extras.keySet()}")
-            return
-        }
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: run {
-            Log.d(TAG, "WA notification: NULL text. Title=$title")
-            return
-        }
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: return
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
 
+        Log.d(TAG, "=== WA NOTIFICATION: pkg=$packageName ===")
         Log.d(TAG, "WA notification: title='$title' text='$text'")
 
         if (title.isBlank() || text.isBlank()) {
@@ -125,11 +103,8 @@ class WANotificationListener : NotificationListenerService() {
             return
         }
 
-        val notificationKey = sbn.key ?: run {
-            Log.d(TAG, "WA notification: NULL key")
-            return
-        }
-        
+        val notificationKey = sbn.key ?: return
+
         if (processedNotifications.containsKey(notificationKey)) {
             Log.d(TAG, "WA notification: already processed key=$notificationKey")
             return
@@ -156,28 +131,23 @@ class WANotificationListener : NotificationListenerService() {
 
         Log.d(TAG, "Parsed: sender='$sender' isGroup=$isGroup group='$groupName'")
 
-        if (sender.isBlank()) {
-            Log.d(TAG, "Sender blank, skipping")
-            return
-        }
+        if (sender.isBlank()) return
         if (sender.equals(SENDER_WHATSAPP, ignoreCase = true)) {
             Log.d(TAG, "Sender is 'WhatsApp' system message, skipping")
             return
         }
-        if (sender.equals(SENDER_YOU, ignoreCase = true)) {
-            Log.d(TAG, "Sender is 'You' (own message), skipping")
+        // Skip own messages - handle both "You" and localized versions
+        if (sender.equals(SENDER_YOU, ignoreCase = true) ||
+            sender.equals(SENDER_YOU_ID, ignoreCase = true)) {
+            Log.d(TAG, "Sender is own message ('$sender'), skipping")
             return
         }
 
         Log.d(TAG, ">>> PROCESSING: from=$sender msg='$text' <<<")
 
-        // Log available actions
-        val actions = notification.actions
-        Log.d(TAG, "Notification has ${actions?.size ?: 0} actions")
-        actions?.forEachIndexed { i, action ->
-            val hasRemoteInput = action.remoteInputs?.isNotEmpty() == true
-            Log.d(TAG, "  Action[$i]: name='${action.title}' remoteInput=$hasRemoteInput")
-        }
+        // Check for reply actions in THIS notification
+        val hasReplyAction = hasReplyAction(notification)
+        Log.d(TAG, "This notification has reply action: $hasReplyAction")
 
         serviceScope.launch {
             try {
@@ -195,14 +165,12 @@ class WANotificationListener : NotificationListenerService() {
                         sendReply(sbn, result)
                     }, result.delayMs)
                 } else {
-                    Log.d(TAG, "No matching rule found for: '$text'")
-                    
-                    // Debug: check why no match
+                    Log.d(TAG, "No matching rule for: '$text'")
                     val db = AppDatabase.getInstance(this@WANotificationListener)
                     val rules = db.ruleDao().getEnabledRules().first()
-                    Log.d(TAG, "Enabled rules count: ${rules.size}")
+                    Log.d(TAG, "Enabled rules: ${rules.size}")
                     rules.forEach { rule ->
-                        Log.d(TAG, "  Rule: id=${rule.id} name='${rule.name}' pattern='${rule.pattern}' matchType=${rule.matchType} enabled=${rule.enabled}")
+                        Log.d(TAG, "  Rule: '${rule.name}' pattern='${rule.pattern}' matchType=${rule.matchType}")
                     }
                 }
             } catch (e: Exception) {
@@ -211,32 +179,160 @@ class WANotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun sendReply(sbn: StatusBarNotification, result: ReplyResult) {
-        val notification = sbn.notification ?: return
-        val actions = notification.actions ?: run {
-            Log.e(TAG, "SEND REPLY: No actions in notification!")
-            return
+    private fun hasReplyAction(notification: Notification): Boolean {
+        val actions = notification.actions ?: return false
+        return actions.any { it.remoteInputs?.isNotEmpty() == true }
+    }
+
+    /**
+     * Find a reply action from ANY active WhatsApp notification.
+     * WhatsApp often posts multiple notifications - some have reply actions, some don't.
+     * We search all active WA notifications to find one with a usable reply action.
+     */
+    private fun findReplyActionFromActiveNotifications(): Pair<Notification.Action, android.app.RemoteInput>? {
+        val activeSbns = activeNotifications ?: return null
+        Log.d(TAG, "Searching ${activeSbns.size} active notifications for reply action...")
+
+        for (activeSbn in activeSbns) {
+            if (activeSbn.packageName !in waPackages) continue
+            val activeNotif = activeSbn.notification ?: continue
+            val actions = activeNotif.actions ?: continue
+
+            for (action in actions) {
+                val remoteInputs = action.remoteInputs
+                if (remoteInputs != null && remoteInputs.isNotEmpty()) {
+                    val actionName = action.title?.toString() ?: "?"
+                    Log.d(TAG, "Found reply action in active notification: '$actionName' (key=${activeSbn.key})")
+                    return Pair(action, remoteInputs[0])
+                }
+            }
         }
 
+        Log.w(TAG, "No reply action found in any active WA notification!")
+        return null
+    }
+
+    /**
+     * Try to find a reply action specific to the sender by checking notification extras.
+     */
+    private fun findReplyActionForSender(sender: String): Pair<Notification.Action, android.app.RemoteInput>? {
+        val activeSbns = activeNotifications ?: return null
+
+        // First try: find notification matching the sender
+        for (activeSbn in activeSbns) {
+            if (activeSbn.packageName !in waPackages) continue
+            val activeNotif = activeSbn.notification ?: continue
+            val extras = activeNotif.extras ?: continue
+            val notifTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: continue
+
+            // Check if this notification is from the same sender
+            val matchSender = notifTitle.equals(sender, ignoreCase = true) ||
+                (notifTitle.contains(":") && notifTitle.substringAfter(":").trim().equals(sender, ignoreCase = true))
+
+            if (matchSender) {
+                val actions = activeNotif.actions ?: continue
+                for (action in actions) {
+                    val remoteInputs = action.remoteInputs
+                    if (remoteInputs != null && remoteInputs.isNotEmpty()) {
+                        Log.d(TAG, "Found sender-specific reply action for '$sender' in key=${activeSbn.key}")
+                        return Pair(action, remoteInputs[0])
+                    }
+                }
+            }
+        }
+
+        // Second try: find any WA notification with a reply action (for grouped notifications)
+        for (activeSbn in activeSbns) {
+            if (activeSbn.packageName !in waPackages) continue
+            val activeNotif = activeSbn.notification ?: continue
+            val extras = activeNotif.extras ?: continue
+            val notifTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: continue
+
+            // Skip self notifications
+            if (notifTitle.equals(SENDER_YOU, ignoreCase = true) ||
+                notifTitle.equals(SENDER_YOU_ID, ignoreCase = true)) continue
+
+            val actions = activeNotif.actions ?: continue
+            for (action in actions) {
+                val remoteInputs = action.remoteInputs
+                if (remoteInputs != null && remoteInputs.isNotEmpty()) {
+                    Log.d(TAG, "Found fallback reply action from '$notifTitle' in key=${activeSbn.key}")
+                    return Pair(action, remoteInputs[0])
+                }
+            }
+        }
+
+        // Third try: even self notifications (last resort)
+        return findReplyActionFromActiveNotifications()
+    }
+
+    private fun sendReply(sbn: StatusBarNotification, result: ReplyResult) {
+        val notification = sbn.notification
+
+        // Strategy 1: Try reply action from THIS notification
         var replyAction: Notification.Action? = null
         var remoteInput: android.app.RemoteInput? = null
 
-        for (action in actions) {
-            val remoteInputs = action.remoteInputs
-            if (remoteInputs != null && remoteInputs.isNotEmpty()) {
-                replyAction = action
-                remoteInput = remoteInputs[0]
-                break
+        val actions = notification?.actions
+        if (actions != null) {
+            for (action in actions) {
+                val remoteInputs = action.remoteInputs
+                if (remoteInputs != null && remoteInputs.isNotEmpty()) {
+                    replyAction = action
+                    remoteInput = remoteInputs[0]
+                    break
+                }
+            }
+        }
+
+        // Strategy 2: Search active notifications for a reply action
+        if (replyAction == null) {
+            Log.w(TAG, "No reply action in current notification, searching active notifications...")
+            val found = findReplyActionForSender(result.sender)
+            if (found != null) {
+                replyAction = found.first
+                remoteInput = found.second
+                Log.d(TAG, "Using reply action from another active notification")
+            }
+        }
+
+        // Strategy 3: Last resort - try NotificationCompat to unwrap wearable actions
+        if (replyAction == null) {
+            Log.w(TAG, "Trying NotificationCompat wearable actions...")
+            if (notification != null) {
+                val compatActions = NotificationCompat.getAction(notification, 0)
+                if (compatActions != null) {
+                    val compatRemoteInputs = compatActions.remoteInputs
+                    if (compatRemoteInputs != null && compatRemoteInputs.isNotEmpty()) {
+                        Log.d(TAG, "Found action via NotificationCompat!")
+                        // Use the compat action's action intent
+                        val bundle = android.os.Bundle()
+                        for (input in compatRemoteInputs) {
+                            bundle.putCharSequence(input.resultKey, result.replyText)
+                        }
+                        try {
+                            val intent = Intent()
+                            intent.putExtras(bundle)
+                            compatActions.actionIntent?.send(applicationContext, 0, intent)
+                            Log.d(TAG, "=== REPLY SENT SUCCESS (via NotificationCompat): '${result.replyText}' ===")
+                            logReply(result)
+                            return
+                        } catch (e: Exception) {
+                            Log.e(TAG, "NotificationCompat reply failed", e)
+                        }
+                    }
+                }
             }
         }
 
         if (replyAction == null || remoteInput == null) {
-            Log.e(TAG, "SEND REPLY: No reply action/remoteInput found in notification!")
-            Log.e(TAG, "This usually means WhatsApp notification doesn't support direct reply")
-            Log.e(TAG, "Make sure WhatsApp notifications are set to show on lock screen")
+            Log.e(TAG, "=== ALL REPLY STRATEGIES FAILED ===")
+            Log.e(TAG, "Cannot send reply to '$result.sender'. WhatsApp notification has no reply action.")
+            Log.e(TAG, "Tips: Check WhatsApp notification settings → make sure 'Show on lock screen' is enabled")
             return
         }
 
+        // Send the reply using the found action
         try {
             val intent = Intent()
             val bundle = android.os.Bundle()
@@ -246,16 +342,19 @@ class WANotificationListener : NotificationListenerService() {
             intent.putExtras(bundle)
             replyAction.actionIntent.send(applicationContext, 0, intent)
             Log.d(TAG, "=== REPLY SENT SUCCESS: '${result.replyText}' ===")
-            
-            serviceScope.launch {
-                autoReplyEngine.logReply(
-                    result.matchedRule.id, result.sender, result.originalText,
-                    result.replyText, result.isGroup, result.groupName, result.processTimeMs
-                )
-                Log.d(TAG, "Reply logged to history")
-            }
+            logReply(result)
         } catch (e: Exception) {
             Log.e(TAG, "=== REPLY SEND FAILED ===", e)
+        }
+    }
+
+    private fun logReply(result: ReplyResult) {
+        serviceScope.launch {
+            autoReplyEngine.logReply(
+                result.matchedRule.id, result.sender, result.originalText,
+                result.replyText, result.isGroup, result.groupName, result.processTimeMs
+            )
+            Log.d(TAG, "Reply logged to history")
         }
     }
 
