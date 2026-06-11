@@ -4,15 +4,13 @@
 
     <item
         android:id="@+id/action_toggle"
-        android:title="@string/action_toggle"
+        android:title="@string/auto_reply_toggle"
         android:checkable="true"
-        android:checked="true"
         app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/action_settings"
-        android:title="@string/action_settings"
+        android:title="@string/settings"
         android:icon="@android:drawable/ic_menu_preferences"
         app:showAsAction="ifRoom" />
-
 </menu>
