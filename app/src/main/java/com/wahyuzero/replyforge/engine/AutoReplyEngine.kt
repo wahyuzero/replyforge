@@ -23,6 +23,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
 data class ReplyResult(
@@ -43,6 +45,8 @@ class AutoReplyEngine(
 
     companion object {
         private const val TAG = "AutoReplyEngine"
+        // Thread-safe sequential index tracking per rule to prevent race conditions
+        private val sequentialCounters = ConcurrentHashMap<Long, AtomicInteger>()
     }
 
     suspend fun processIncomingMessage(
@@ -220,7 +224,15 @@ class AutoReplyEngine(
     private fun isWithinActiveHours(rule: Rule, currentTime: String): Boolean {
         if (rule.startTime == null || rule.endTime == null) return true
         if (rule.startTime.isBlank() || rule.endTime.isBlank()) return true
-        return currentTime in rule.startTime..rule.endTime
+
+        // Handle cross-midnight ranges (e.g. 22:00 - 06:00)
+        return if (rule.startTime <= rule.endTime) {
+            // Same day: e.g. 08:00 - 22:00
+            currentTime in rule.startTime..rule.endTime
+        } else {
+            // Cross midnight: e.g. 22:00 - 06:00
+            currentTime >= rule.startTime || currentTime <= rule.endTime
+        }
     }
 
     // Phase 3: Check if current day is in active days
@@ -297,8 +309,15 @@ class AutoReplyEngine(
             ResponseMode.SEQUENTIAL -> {
                 val responses = rule.response.split("|||").map { it.trim() }.filter { it.isNotBlank() }
                 if (responses.size <= 1) return rule.response
-                val index = rule.sequentialIndex.coerceIn(0, responses.lastIndex)
+                // Use atomic counter to prevent race condition on concurrent messages
+                val counter = sequentialCounters.getOrPut(rule.id) {
+                    AtomicInteger(rule.sequentialIndex.coerceIn(0, responses.lastIndex))
+                }
+                val index = counter.getAndAccumulate(responses.size) { curr, size ->
+                    (curr + 1) % size
+                }.coerceIn(0, responses.lastIndex)
                 val reply = responses[index]
+                // Persist the next index back to DB (best-effort)
                 val nextIndex = (index + 1) % responses.size
                 val updated = rule.copy(sequentialIndex = nextIndex)
                 ruleDao.update(updated)

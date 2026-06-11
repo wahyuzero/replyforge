@@ -25,6 +25,7 @@ class RuleEditActivity : AppCompatActivity() {
     private lateinit var db: AppDatabase
     private var ruleId: Long = -1L
     private var existingRule: Rule? = null
+    private var isLoadingRule = false
 
     // Phase 3: Time scheduling state
     private var startTime: String? = null
@@ -147,8 +148,9 @@ class RuleEditActivity : AppCompatActivity() {
             binding.spinnerAiProvider.setAdapter(adapter)
 
             // If editing and there's a provider set, select it
-            if (existingRule?.aiProviderId != null) {
-                val provider = aiProviders.find { it.id == existingRule!!.aiProviderId }
+            val rule = existingRule
+            if (rule?.aiProviderId != null) {
+                val provider = aiProviders.find { it.id == rule.aiProviderId }
                 if (provider != null) {
                     binding.spinnerAiProvider.setText(provider.name, false)
                 }
@@ -171,10 +173,19 @@ class RuleEditActivity : AppCompatActivity() {
         binding.sliderSimilarity.addOnChangeListener { _, value, _ ->
             binding.textSimilarityValue.text = "${value.toInt()}%"
         }
+
+        // Make Case Sensitive and Case Insensitive mutually exclusive
+        binding.switchCaseSensitive.setOnCheckedChangeListener { _, isChecked ->
+            if (!isLoadingRule && isChecked) binding.switchCaseInsensitive.isChecked = false
+        }
+        binding.switchCaseInsensitive.setOnCheckedChangeListener { _, isChecked ->
+            if (!isLoadingRule && isChecked) binding.switchCaseSensitive.isChecked = false
+        }
     }
 
     private fun loadRule() {
         lifecycleScope.launch {
+            isLoadingRule = true
             existingRule = withContext(Dispatchers.IO) {
                 db.ruleDao().getRuleById(ruleId)
             }
@@ -267,6 +278,7 @@ class RuleEditActivity : AppCompatActivity() {
                 binding.editPreventRepeatingMs.setText(rule.preventRepeatingMs.toString())
                 binding.editPrevRuleTimeoutMs.setText(rule.prevRuleTimeoutMs.toString())
             }
+            isLoadingRule = false
         }
     }
 
@@ -355,8 +367,9 @@ class RuleEditActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             withContext(Dispatchers.IO) {
-                if (existingRule != null) {
-                    val updated = existingRule!!.copy(
+                val rule = existingRule
+                if (rule != null) {
+                    val updated = rule.copy(
                         name = name,
                         pattern = pattern,
                         matchType = matchType,

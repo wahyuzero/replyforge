@@ -24,6 +24,8 @@ import com.wahyuzero.replyforge.network.AiService
 import com.wahyuzero.replyforge.ui.main.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class WANotificationListener : NotificationListenerService() {
@@ -45,7 +47,7 @@ class WANotificationListener : NotificationListenerService() {
     private lateinit var autoReplyEngine: AutoReplyEngine
     private lateinit var appPrefs: AppPrefs
     private lateinit var aiService: AiService
-    private val serviceScope = CoroutineScope(Dispatchers.IO)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val handler = Handler(Looper.getMainLooper())
     private val processedNotifications = mutableSetOf<String>()
 
@@ -205,6 +207,7 @@ class WANotificationListener : NotificationListenerService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceScope.cancel()
         handler.removeCallbacksAndMessages(null)
     }
 }

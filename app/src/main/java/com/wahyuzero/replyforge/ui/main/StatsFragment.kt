@@ -41,7 +41,7 @@ class StatsFragment : Fragment() {
         val db = AppDatabase.getInstance(requireContext())
         val historyDao = db.historyDao()
 
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val cal = Calendar.getInstance()
             cal.set(Calendar.HOUR_OF_DAY, 0)
             cal.set(Calendar.MINUTE, 0)

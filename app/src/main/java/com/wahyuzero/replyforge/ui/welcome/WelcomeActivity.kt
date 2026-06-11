@@ -18,7 +18,7 @@ import com.wahyuzero.replyforge.data.prefs.AppPrefs
 import com.wahyuzero.replyforge.databinding.ActivityWelcomeBinding
 import com.wahyuzero.replyforge.service.WANotificationListener
 import com.wahyuzero.replyforge.ui.main.MainActivity
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -43,7 +43,7 @@ class WelcomeActivity : AppCompatActivity() {
     }
 
     private fun checkIfWelcomeDone() {
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             appPrefs.welcomeDone.collect { done ->
                 if (done) {
                     navigateToMain()
@@ -130,7 +130,7 @@ class WelcomeActivity : AppCompatActivity() {
     }
 
     private fun finishWelcome() {
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             appPrefs.setWelcomeDone(true)
         }
         navigateToMain()

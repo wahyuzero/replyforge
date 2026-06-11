@@ -41,7 +41,8 @@ object PatternMatcher {
             return MatchResult(similarity >= similarityThreshold / 100.0)
         }
 
-        val useCaseInsensitive = !caseSensitive || caseInsensitive
+        // caseSensitive takes precedence when explicitly true
+        val useCaseInsensitive = !caseSensitive
 
         // For regex, handle groups
         if (matchType == MatchType.REGEX) {
@@ -71,8 +72,8 @@ object PatternMatcher {
         ignoreAccents: Boolean
     ): String {
         var result = text
-        // Apply case folding
-        if (!caseSensitive || caseInsensitive) {
+        // Apply case folding — caseSensitive flag is the single source of truth
+        if (!caseSensitive) {
             result = result.lowercase()
         }
         // Strip accents/diacritics

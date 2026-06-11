@@ -25,7 +25,7 @@ import com.wahyuzero.replyforge.databinding.ActivityMainBinding
 import com.wahyuzero.replyforge.ui.rule.RuleEditActivity
 import com.wahyuzero.replyforge.ui.settings.SettingsActivity
 import com.wahyuzero.replyforge.ui.welcome.WelcomeActivity
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -80,7 +80,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun observeSettings() {
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             appPrefs.autoReplyEnabled.collect { enabled ->
                 autoReplyEnabled = enabled
                 invalidateOptionsMenu()
@@ -105,7 +105,7 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_toggle -> {
                 val newValue = !autoReplyEnabled
-                CoroutineScope(Dispatchers.IO).launch {
+                lifecycleScope.launch(Dispatchers.IO) {
                     appPrefs.setAutoReplyEnabled(newValue)
                 }
                 item.isChecked = newValue
