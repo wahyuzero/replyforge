@@ -26,20 +26,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class WANotificationListener : NotificationListenerService() {
 
     companion object {
-        private const val TAG = "WANotificationListener"
+        private const val TAG = "RF_DEBUG"
         private const val CHANNEL_ID = "replyforge_service"
         private const val FOREGROUND_NOTIFICATION_ID = 1001
 
         private const val PACKAGE_WHATSAPP = "com.whatsapp"
         private const val PACKAGE_WHATSAPP_BUSINESS = "com.whatsapp.w4b"
-
-        private const val KEY_TEXT_REPLY = "key_text_reply"
-        private const val EXTRA_CONVERSATION = "android.intent.extra.TEXT"
 
         const val SENDER_WHATSAPP = "WhatsApp"
         const val SENDER_YOU = "You"
@@ -58,37 +56,84 @@ class WANotificationListener : NotificationListenerService() {
 
     override fun onCreate() {
         super.onCreate()
-        val app = application as ReplyForgeApp
-        val db = AppDatabase.getInstance(this)
-        appPrefs = app.appPrefs
-        aiService = AiService(db.conversationDao(), db.aiUsageDao())
-        autoReplyEngine = AutoReplyEngine(db.ruleDao(), db.historyDao(), appPrefs, db.holidayDao(), db.rateLimitDao(), db.aiProviderDao(), aiService)
-        createNotificationChannel()
-        startForeground()
+        Log.d(TAG, "=== SERVICE onCreate ===")
+        try {
+            val app = application as ReplyForgeApp
+            val db = AppDatabase.getInstance(this)
+            appPrefs = app.appPrefs
+            aiService = AiService(db.conversationDao(), db.aiUsageDao())
+            autoReplyEngine = AutoReplyEngine(db.ruleDao(), db.historyDao(), appPrefs, db.holidayDao(), db.rateLimitDao(), db.aiProviderDao(), aiService)
+            createNotificationChannel()
+            startForeground()
+            Log.d(TAG, "=== SERVICE onCreate SUCCESS ===")
+        } catch (e: Exception) {
+            Log.e(TAG, "=== SERVICE onCreate FAILED ===", e)
+        }
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        Log.d(TAG, "Notification listener connected")
+        Log.d(TAG, "=== LISTENER CONNECTED ===")
+        Log.d(TAG, "Active notifications: ${activeNotifications?.size ?: 0}")
+        
+        // Log current status
+        serviceScope.launch {
+            val enabled = appPrefs.autoReplyEnabled.first()
+            Log.d(TAG, "Auto-reply enabled in prefs: $enabled")
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
-        if (sbn == null) return
+        if (sbn == null) {
+            Log.d(TAG, "Notification posted: NULL")
+            return
+        }
 
         val packageName = sbn.packageName
-        if (packageName !in waPackages) return
+        
+        // Log ALL notifications for debugging
+        if (packageName in waPackages) {
+            Log.d(TAG, "=== WA NOTIFICATION: pkg=$packageName ===")
+        } else {
+            // Skip non-WA silently but log first few
+            return
+        }
 
-        val notification = sbn.notification ?: return
-        val extras = notification.extras ?: return
+        val notification = sbn.notification ?: run {
+            Log.d(TAG, "WA notification: NULL notification object")
+            return
+        }
+        val extras = notification.extras ?: run {
+            Log.d(TAG, "WA notification: NULL extras")
+            return
+        }
 
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: return
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: run {
+            Log.d(TAG, "WA notification: NULL title. Extra keys: ${extras.keySet()}")
+            return
+        }
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: run {
+            Log.d(TAG, "WA notification: NULL text. Title=$title")
+            return
+        }
 
-        if (title.isBlank() || text.isBlank()) return
+        Log.d(TAG, "WA notification: title='$title' text='$text'")
 
-        val notificationKey = sbn.key ?: return
-        if (processedNotifications.containsKey(notificationKey)) return
+        if (title.isBlank() || text.isBlank()) {
+            Log.d(TAG, "WA notification: blank title or text, skipping")
+            return
+        }
+
+        val notificationKey = sbn.key ?: run {
+            Log.d(TAG, "WA notification: NULL key")
+            return
+        }
+        
+        if (processedNotifications.containsKey(notificationKey)) {
+            Log.d(TAG, "WA notification: already processed key=$notificationKey")
+            return
+        }
         processedNotifications[notificationKey] = true
 
         if (processedNotifications.size > MAX_PROCESSED_NOTIFICATIONS) {
@@ -109,11 +154,30 @@ class WANotificationListener : NotificationListenerService() {
             groupName = null
         }
 
-        if (sender.isBlank()) return
-        if (sender.equals(SENDER_WHATSAPP, ignoreCase = true)) return
-        if (sender.equals(SENDER_YOU, ignoreCase = true)) return
+        Log.d(TAG, "Parsed: sender='$sender' isGroup=$isGroup group='$groupName'")
 
-        Log.d(TAG, "WA message from $sender: $text (group=$isGroup)")
+        if (sender.isBlank()) {
+            Log.d(TAG, "Sender blank, skipping")
+            return
+        }
+        if (sender.equals(SENDER_WHATSAPP, ignoreCase = true)) {
+            Log.d(TAG, "Sender is 'WhatsApp' system message, skipping")
+            return
+        }
+        if (sender.equals(SENDER_YOU, ignoreCase = true)) {
+            Log.d(TAG, "Sender is 'You' (own message), skipping")
+            return
+        }
+
+        Log.d(TAG, ">>> PROCESSING: from=$sender msg='$text' <<<")
+
+        // Log available actions
+        val actions = notification.actions
+        Log.d(TAG, "Notification has ${actions?.size ?: 0} actions")
+        actions?.forEachIndexed { i, action ->
+            val hasRemoteInput = action.remoteInputs?.isNotEmpty() == true
+            Log.d(TAG, "  Action[$i]: name='${action.title}' remoteInput=$hasRemoteInput")
+        }
 
         serviceScope.launch {
             try {
@@ -125,10 +189,21 @@ class WANotificationListener : NotificationListenerService() {
                 )
 
                 if (result != null) {
-                    Log.d(TAG, "Matched rule, sending reply in ${result.delayMs}ms: ${result.replyText}")
+                    Log.d(TAG, "=== MATCH FOUND! Rule: ${result.matchedRule.name}, delay: ${result.delayMs}ms ===")
+                    Log.d(TAG, "Reply text: '${result.replyText}'")
                     handler.postDelayed({
                         sendReply(sbn, result)
                     }, result.delayMs)
+                } else {
+                    Log.d(TAG, "No matching rule found for: '$text'")
+                    
+                    // Debug: check why no match
+                    val db = AppDatabase.getInstance(this@WANotificationListener)
+                    val rules = db.ruleDao().getEnabledRules().first()
+                    Log.d(TAG, "Enabled rules count: ${rules.size}")
+                    rules.forEach { rule ->
+                        Log.d(TAG, "  Rule: id=${rule.id} name='${rule.name}' pattern='${rule.pattern}' matchType=${rule.matchType} enabled=${rule.enabled}")
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing message", e)
@@ -138,7 +213,10 @@ class WANotificationListener : NotificationListenerService() {
 
     private fun sendReply(sbn: StatusBarNotification, result: ReplyResult) {
         val notification = sbn.notification ?: return
-        val actions = notification.actions ?: return
+        val actions = notification.actions ?: run {
+            Log.e(TAG, "SEND REPLY: No actions in notification!")
+            return
+        }
 
         var replyAction: Notification.Action? = null
         var remoteInput: android.app.RemoteInput? = null
@@ -153,7 +231,9 @@ class WANotificationListener : NotificationListenerService() {
         }
 
         if (replyAction == null || remoteInput == null) {
-            Log.w(TAG, "No reply action found in notification")
+            Log.e(TAG, "SEND REPLY: No reply action/remoteInput found in notification!")
+            Log.e(TAG, "This usually means WhatsApp notification doesn't support direct reply")
+            Log.e(TAG, "Make sure WhatsApp notifications are set to show on lock screen")
             return
         }
 
@@ -165,16 +245,17 @@ class WANotificationListener : NotificationListenerService() {
             }
             intent.putExtras(bundle)
             replyAction.actionIntent.send(applicationContext, 0, intent)
-            Log.d(TAG, "Reply sent successfully: ${result.replyText}")
-            // Log to history only after successful send
+            Log.d(TAG, "=== REPLY SENT SUCCESS: '${result.replyText}' ===")
+            
             serviceScope.launch {
                 autoReplyEngine.logReply(
                     result.matchedRule.id, result.sender, result.originalText,
                     result.replyText, result.isGroup, result.groupName, result.processTimeMs
                 )
+                Log.d(TAG, "Reply logged to history")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to send reply", e)
+            Log.e(TAG, "=== REPLY SEND FAILED ===", e)
         }
     }
 
@@ -210,15 +291,17 @@ class WANotificationListener : NotificationListenerService() {
             .build()
 
         startForeground(FOREGROUND_NOTIFICATION_ID, notification)
+        Log.d(TAG, "=== FOREGROUND SERVICE STARTED ===")
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-        Log.d(TAG, "Notification listener disconnected")
+        Log.d(TAG, "=== LISTENER DISCONNECTED ===")
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "=== SERVICE DESTROYED ===")
         serviceScope.cancel()
         handler.removeCallbacksAndMessages(null)
     }

@@ -3,6 +3,9 @@ package com.wahyuzero.replyforge.ui.main
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -11,6 +14,7 @@ import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
@@ -23,6 +27,7 @@ import com.wahyuzero.replyforge.R
 import com.wahyuzero.replyforge.data.db.AppDatabase
 import com.wahyuzero.replyforge.data.prefs.AppPrefs
 import com.wahyuzero.replyforge.databinding.ActivityMainBinding
+import com.wahyuzero.replyforge.service.WANotificationListener
 import com.wahyuzero.replyforge.ui.rule.RuleEditActivity
 import com.wahyuzero.replyforge.ui.settings.SettingsActivity
 import com.wahyuzero.replyforge.ui.welcome.WelcomeActivity
@@ -31,6 +36,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "RF_DEBUG"
+        private const val REQUEST_POST_NOTIFICATIONS = 1001
+    }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var appPrefs: AppPrefs
@@ -48,24 +58,74 @@ class MainActivity : AppCompatActivity() {
             setupViewPager()
             setupFAB()
             observeSettings()
+            
+            // Request POST_NOTIFICATIONS permission (Android 13+)
+            requestNotificationPermission()
+            
+            // Log service status
+            logServiceStatus()
         } catch (e: Exception) {
-            Log.e("MainActivity", "CRASH in onCreate", e)
-            // Write crash info to a toast so user can see
-            Toast.makeText(this, "Error: ${e.message}\n${e.cause?.message}", Toast.LENGTH_LONG).show()
-            // Write to crash log file
-            try {
-                val sw = java.io.StringWriter()
-                e.printStackTrace(java.io.PrintWriter(sw))
-                openFileOutput("main_crash.log", MODE_APPEND).use { fos ->
-                    fos.write("=== ${java.util.Date()} ===\n${sw}\n\n".toByteArray())
-                }
-            } catch (_: Exception) {}
+            Log.e(TAG, "CRASH in onCreate", e)
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onResume() {
         super.onResume()
         checkNotificationListenerPermission()
+        logServiceStatus()
+    }
+
+    private fun logServiceStatus() {
+        val componentName = ComponentName(this, WANotificationListener::class.java)
+        val enabledListeners = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+        val hasNotifAccess = enabledListeners?.contains(componentName.flattenToString()) == true
+        
+        val hasPostNotif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else true
+        
+        val isNotifEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        
+        Log.d(TAG, "=== SERVICE STATUS ===")
+        Log.d(TAG, "  Notification Listener enabled: $hasNotifAccess")
+        Log.d(TAG, "  POST_NOTIFICATIONS permission: $hasPostNotif")
+        Log.d(TAG, "  Notifications enabled: $isNotifEnabled")
+        
+        if (!hasNotifAccess) {
+            Log.w(TAG, "  ⚠️ Notification Listener NOT enabled! App won't work!")
+        }
+        if (!isNotifEnabled) {
+            Log.w(TAG, "  ⚠️ App notifications disabled in system settings!")
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
+                != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_POST_NOTIFICATIONS
+                )
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_POST_NOTIFICATIONS) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "POST_NOTIFICATIONS permission granted")
+            } else {
+                Log.w(TAG, "POST_NOTIFICATIONS permission denied")
+                Toast.makeText(this, "Notification permission needed for auto-reply to work!", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun setupToolbar() {
@@ -106,6 +166,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             appPrefs.autoReplyEnabled.collect { enabled ->
                 autoReplyEnabled = enabled
+                Log.d(TAG, "Auto-reply pref changed: $enabled")
                 invalidateOptionsMenu()
             }
         }
@@ -148,7 +209,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkNotificationListenerPermission() {
-        val componentName = ComponentName(this, com.wahyuzero.replyforge.service.WANotificationListener::class.java)
+        val componentName = ComponentName(this, WANotificationListener::class.java)
         val enabledListeners = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
         val hasPermission = enabledListeners?.contains(componentName.flattenToString()) == true
 
