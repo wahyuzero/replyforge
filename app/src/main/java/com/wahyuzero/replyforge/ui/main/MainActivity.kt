@@ -78,11 +78,19 @@ class MainActivity : AppCompatActivity() {
         binding.viewPager.adapter = pagerAdapter
 
         TabLayoutMediator(binding.tabLayout, binding.viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> getString(R.string.tab_rules)
-                1 -> getString(R.string.tab_history)
-                2 -> getString(R.string.tab_stats)
-                else -> ""
+            when (position) {
+                0 -> {
+                    tab.text = getString(R.string.tab_rules)
+                    tab.setIcon(R.drawable.ic_rules)
+                }
+                1 -> {
+                    tab.text = getString(R.string.tab_history)
+                    tab.setIcon(R.drawable.ic_history)
+                }
+                2 -> {
+                    tab.text = getString(R.string.tab_stats)
+                    tab.setIcon(R.drawable.ic_stats)
+                }
             }
         }.attach()
     }
@@ -109,8 +117,8 @@ class MainActivity : AppCompatActivity() {
         val toggleItem = menu.findItem(R.id.action_toggle)
         toggleItem.isChecked = autoReplyEnabled
         toggleItem.setIcon(
-            if (autoReplyEnabled) R.drawable.ic_launcher_foreground
-            else android.R.drawable.ic_menu_close_clear_cancel
+            if (autoReplyEnabled) R.drawable.ic_power_on
+            else R.drawable.ic_power_off
         )
 
         return true

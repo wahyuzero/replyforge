@@ -77,7 +77,7 @@
     <string name="notification_access_granted">Notification access: Granted</string>
     <string name="notification_access_denied">Notification access: Not granted</string>
     <string name="version_info">Version %s</string>
-    <string name="about_description">ReplyForge — Free open-source WhatsApp auto-reply.\n\nBuilt with ❤️ by wahyuzero</string>
+    <string name="about_description">ReplyForge — Free open-source WhatsApp auto-reply.</string>
 
     <!-- Days -->
     <string-array name="day_abbreviations">
