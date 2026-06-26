@@ -130,13 +130,26 @@ class WANotificationListener : NotificationListenerService() {
         Log.d(TAG, "=== WA NOTIF: title='$title' text='${text.take(60)}' id=${sbn.id} ===")
 
         if (title.isBlank() || text.isBlank()) return
-        // Dedup by notification key
+
+        // Dedup by notification key + message content.
+        // WhatsApp reuses the same notification key for messages from the same
+        // conversation — it UPDATES the existing notification text instead of
+        // posting a new one. Deduping by key alone causes the 2nd+ message to
+        // be silently skipped. Using key+content ensures each unique message
+        // gets processed.
         val notifKey = sbn.key ?: return
-        if (processedNotifications.containsKey(notifKey)) {
-            Log.d(TAG, "Already processed: $notifKey")
+        val dedupKey = "$notifKey|${text.hashCode()}"
+
+        if (processedNotifications.containsKey(dedupKey)) {
+            Log.d(TAG, "Already processed: $dedupKey")
             return
         }
-        processedNotifications[notifKey] = true
+        // Also clean up old entries for this notifKey to prevent unbounded growth
+        // (keep only the latest entry per conversation)
+        val keysToRemove = processedNotifications.keys.filter { it.startsWith("$notifKey|") && it != dedupKey }
+        keysToRemove.forEach { processedNotifications.remove(it) }
+
+        processedNotifications[dedupKey] = true
         if (processedNotifications.size > MAX_PROCESSED) {
             val iter = processedNotifications.keys.iterator()
             repeat(EVICT_THRESHOLD) { iter.next(); iter.remove() }
