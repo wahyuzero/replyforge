@@ -120,6 +120,16 @@ private fun insertHolidays(db: SupportSQLiteDatabase) {
     }
 }
 
+val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE rules ADD COLUMN responseMode TEXT NOT NULL DEFAULT 'SINGLE'")
+        db.execSQL("ALTER TABLE rules ADD COLUMN sequentialIndex INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE rules ADD COLUMN ignorePattern TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE rules ADD COLUMN ignoreGroups INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE rules ADD COLUMN ignoreIndividuals INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         // Add new columns to rules table
@@ -280,7 +290,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

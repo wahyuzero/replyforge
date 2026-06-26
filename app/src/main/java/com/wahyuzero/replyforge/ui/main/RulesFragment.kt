@@ -8,10 +8,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.wahyuzero.replyforge.R
-import com.wahyuzero.replyforge.data.db.AppDatabase
 import com.wahyuzero.replyforge.data.model.Rule
 import com.wahyuzero.replyforge.databinding.FragmentRulesBinding
 import com.wahyuzero.replyforge.ui.rule.RuleEditActivity
@@ -23,7 +24,7 @@ class RulesFragment : Fragment() {
     private var _binding: FragmentRulesBinding? = null
     private val binding get() = _binding!!
     private lateinit var adapter: RulesAdapter
-    private lateinit var db: AppDatabase
+    private val viewModel: RulesViewModel by viewModels { MainViewModelFactory(requireActivity().application) }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -36,7 +37,6 @@ class RulesFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        db = AppDatabase.getInstance(requireContext())
 
         adapter = RulesAdapter(
             onRuleClick = { rule ->
@@ -45,9 +45,7 @@ class RulesFragment : Fragment() {
                 startActivity(intent)
             },
             onToggleClick = { rule, enabled ->
-                viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-                    db.ruleDao().setEnabled(rule.id, enabled)
-                }
+                viewModel.toggleRule(rule, enabled)
             },
             onLongClick = { rule ->
                 showDeleteDialog(rule)
@@ -62,7 +60,7 @@ class RulesFragment : Fragment() {
 
     private fun observeRules() {
         viewLifecycleOwner.lifecycleScope.launch {
-            db.ruleDao().getAllRules().collect { rules ->
+            viewModel.rules.collect { rules ->
                 adapter.submitList(rules)
                 binding.textEmpty.visibility = if (rules.isEmpty()) View.VISIBLE else View.GONE
                 binding.recyclerView.visibility = if (rules.isEmpty()) View.GONE else View.VISIBLE
@@ -75,9 +73,7 @@ class RulesFragment : Fragment() {
             .setTitle(getString(R.string.title_delete_rule))
             .setMessage(getString(R.string.delete_rule_message, rule.name))
             .setPositiveButton(getString(R.string.delete)) { _, _ ->
-                lifecycleScope.launch(Dispatchers.IO) {
-                    db.ruleDao().delete(rule)
-                }
+                viewModel.deleteRule(rule)
                 Toast.makeText(requireContext(), getString(R.string.rule_deleted), Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton(getString(R.string.cancel), null)

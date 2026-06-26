@@ -16,11 +16,14 @@ interface ConversationDao {
     @Query("SELECT * FROM conversation_messages WHERE contactName = :contactName ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentMessages(contactName: String, limit: Int): List<ConversationMessage>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(message: ConversationMessage): Long
-
     @Query("DELETE FROM conversation_messages WHERE contactName = :contactName AND id NOT IN (SELECT id FROM conversation_messages WHERE contactName = :contactName ORDER BY timestamp DESC LIMIT :keepCount)")
     suspend fun cleanupOldMessages(contactName: String, keepCount: Int)
+
+    @Query("DELETE FROM conversation_messages WHERE timestamp < :cutoffTime")
+    suspend fun deleteOlderThan(cutoffTime: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(message: ConversationMessage): Long
 
     @Query("DELETE FROM conversation_messages")
     suspend fun deleteAll()

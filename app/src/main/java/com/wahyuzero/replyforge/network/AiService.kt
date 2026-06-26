@@ -2,6 +2,7 @@ package com.wahyuzero.replyforge.network
 
 import android.util.Log
 import com.wahyuzero.replyforge.BuildConfig
+import com.wahyuzero.replyforge.data.CryptoUtils
 import com.wahyuzero.replyforge.data.db.AiUsageDao
 import com.wahyuzero.replyforge.data.db.ConversationDao
 import com.wahyuzero.replyforge.data.model.AiProvider
@@ -144,7 +145,7 @@ class AiService(
             // Call API
             val response = apiClient.chatCompletion(
                 url = url,
-                authorization = "Bearer ${provider.apiKey}",
+                authorization = "Bearer ${CryptoUtils.decrypt(provider.apiKey)}",
                 request = request
             )
 

@@ -5,7 +5,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import android.util.Log
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequest
+import androidx.work.WorkManager
 import com.wahyuzero.replyforge.data.prefs.AppPrefs
+import com.wahyuzero.replyforge.worker.ConversationCleanupWorker
+import java.util.concurrent.TimeUnit
 
 class ReplyForgeApp : Application() {
 
@@ -15,6 +20,7 @@ class ReplyForgeApp : Application() {
         super.onCreate()
         Thread.setDefaultUncaughtExceptionHandler(CrashHandler())
         createNotificationChannel()
+        scheduleConversationCleanup()
     }
 
     private fun createNotificationChannel() {
@@ -30,6 +36,19 @@ class ReplyForgeApp : Application() {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
+    }
+
+    private fun scheduleConversationCleanup() {
+        val request = PeriodicWorkRequest.Builder(
+            ConversationCleanupWorker::class.java,
+            24, TimeUnit.HOURS
+        ).build()
+        WorkManager.getInstance(this)
+            .enqueueUniquePeriodicWork(
+                ConversationCleanupWorker.WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                request
+            )
     }
 
     private inner class CrashHandler : Thread.UncaughtExceptionHandler {

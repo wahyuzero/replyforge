@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.wahyuzero.replyforge.R
+import com.wahyuzero.replyforge.data.CryptoUtils
 import com.wahyuzero.replyforge.data.db.AppDatabase
 import com.wahyuzero.replyforge.data.model.AiProvider
 import com.wahyuzero.replyforge.data.model.AiProviderType
@@ -99,7 +100,7 @@ class AiProviderActivity : AppCompatActivity() {
             editName.setText(existingProvider.name)
             spinnerType.setText(existingProvider.type.name, false)
             editBaseUrl.setText(existingProvider.baseUrl)
-            editApiKey.setText(existingProvider.apiKey)
+            editApiKey.setText(CryptoUtils.decrypt(existingProvider.apiKey))
             editModel.setText(existingProvider.modelName)
             editMaxTokens.setText(existingProvider.maxTokens.toString())
             editTemperature.setText(existingProvider.temperature.toString())
@@ -143,7 +144,7 @@ class AiProviderActivity : AppCompatActivity() {
                                 name = name,
                                 type = type,
                                 baseUrl = baseUrl,
-                                apiKey = apiKey,
+                                apiKey = CryptoUtils.encrypt(apiKey),
                                 modelName = modelName,
                                 maxTokens = maxTokens,
                                 temperature = temperature
@@ -155,7 +156,7 @@ class AiProviderActivity : AppCompatActivity() {
                                 name = name,
                                 type = type,
                                 baseUrl = baseUrl,
-                                apiKey = apiKey,
+                                apiKey = CryptoUtils.encrypt(apiKey),
                                 modelName = modelName,
                                 maxTokens = maxTokens,
                                 temperature = temperature
