@@ -18,7 +18,7 @@ class ReplyForgeApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        Thread.setDefaultUncaughtExceptionHandler(CrashHandler())
+        CrashHandler.install(this)
         createNotificationChannel()
         scheduleConversationCleanup()
     }
@@ -49,27 +49,6 @@ class ReplyForgeApp : Application() {
                 ExistingPeriodicWorkPolicy.KEEP,
                 request
             )
-    }
-
-    private inner class CrashHandler : Thread.UncaughtExceptionHandler {
-        private val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-
-        override fun uncaughtException(thread: Thread, throwable: Throwable) {
-            Log.e("ReplyForge", "FATAL CRASH", throwable)
-
-            // Write crash log to file
-            try {
-                val sw = java.io.StringWriter()
-                throwable.printStackTrace(java.io.PrintWriter(sw))
-                openFileOutput("crash.log", MODE_PRIVATE).use { fos ->
-                    fos.write(sw.toString().toByteArray())
-                }
-            } catch (e: Exception) {
-                Log.e("ReplyForge", "Failed to write crash log", e)
-            }
-
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
     }
 
     companion object {

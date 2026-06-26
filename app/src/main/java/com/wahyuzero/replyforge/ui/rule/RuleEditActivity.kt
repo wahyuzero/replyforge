@@ -283,180 +283,35 @@ class RuleEditActivity : AppCompatActivity() {
     }
 
     private fun saveRule() {
-        val name = binding.editName.text.toString().trim()
-        val pattern = binding.editPattern.text.toString().trim()
-        val response = binding.editResponse.text.toString().trim()
-
-        if (name.isBlank()) {
-            binding.editName.error = getString(R.string.name_required)
+        if (!RuleFormMapper.validateForm(binding)) {
+            if (binding.editName.text.toString().trim().isBlank()) {
+                binding.editName.error = getString(R.string.name_required)
+            } else if (binding.editPattern.text.toString().trim().isBlank()) {
+                binding.editPattern.error = getString(R.string.pattern_required)
+            } else {
+                binding.editResponse.error = getString(R.string.response_required)
+            }
             return
         }
 
-        if (pattern.isBlank()) {
-            binding.editPattern.error = getString(R.string.pattern_required)
-            return
-        }
-
-        if (response.isBlank()) {
-            binding.editResponse.error = getString(R.string.response_required)
-            return
-        }
-
-        val matchTypeDisplayName = binding.spinnerMatchType.text.toString()
-        val matchType = MatchType.values().find { it.displayName == matchTypeDisplayName }
-            ?: MatchType.CONTAINS
-
-        val responseModeName = binding.spinnerResponseMode.text.toString()
-        val responseMode = ResponseMode.values().find { it.name == responseModeName }
-            ?: ResponseMode.SINGLE
-
-        val delayMin = binding.editDelayMin.text.toString().toIntOrNull() ?: 0
-        val delayMax = binding.editDelayMax.text.toString().toIntOrNull() ?: 0
-        val priority = binding.editPriority.text.toString().toIntOrNull() ?: 0
-        val caseSensitive = binding.switchCaseSensitive.isChecked
-        val enabled = binding.switchEnabled.isChecked
-        val ignorePattern = binding.editIgnorePattern.text.toString().trim()
-        val ignoreGroups = binding.switchIgnoreGroups.isChecked
-        val ignoreIndividuals = binding.switchIgnoreIndividuals.isChecked
-        val now = System.currentTimeMillis()
-
-        // Phase 3: New fields
-        val activeDaysStr = selectedDays.sorted().joinToString(",")
-        val minDelaySec = binding.editMinDelaySeconds.text.toString().toIntOrNull() ?: 0
-        val maxReplies = binding.editMaxReplies.text.toString().toIntOrNull() ?: 0
-        val ignoreHolidays = binding.switchIgnoreHolidays.isChecked
-
-        // Phase 4: AI fields
-        val useAi = binding.switchUseAi.isChecked
         val providerName = binding.spinnerAiProvider.text.toString().trim()
         val aiProviderId = aiProviders.find { it.name == providerName }?.id
-        val systemPrompt = binding.editSystemPrompt.text.toString().trim().ifBlank { null }
-        val aiTemperature = binding.sliderAiTemperature.value.let {
-            // Only store if significantly different from 0.7 (default)
-            if (Math.abs(it - 0.7f) < 0.05f) null else it
-        }
 
-        // Gap fill: Reply system fields
-        val replyDelayMs = binding.editReplyDelayMs.text.toString().toLongOrNull() ?: 0L
-        val replyHeader = binding.editReplyHeader.text.toString().trim().ifBlank { null }
-        val replyFooter = binding.editReplyFooter.text.toString().trim().ifBlank { null }
-        val replyPrefix = binding.editReplyPrefix.text.toString().trim().ifBlank { null }
-        val probability = binding.sliderProbability.value.toInt()
-        val lineBreaks = binding.switchLineBreaks.isChecked
-
-        // Gap fill: Pattern matching
-        val caseInsensitive = binding.switchCaseInsensitive.isChecked
-        val ignoreAccents = binding.switchIgnoreAccents.isChecked
-        val similarityThreshold = binding.sliderSimilarity.value.toInt()
-
-        // Gap fill: Receiver type
-        val receiverType = when {
-            binding.radioContactsOnly.isChecked -> 1
-            binding.radioGroupsOnly.isChecked -> 2
-            else -> 0
-        }
-
-        // Gap fill: Specific contacts/groups
-        val specificContacts = binding.editSpecificContacts.text.toString().trim().ifBlank { null }
-        val specificGroups = binding.editSpecificGroups.text.toString().trim().ifBlank { null }
-
-        // Gap fill: Rate limiting
-        val dailyReplyLimit = binding.editDailyReplyLimit.text.toString().toIntOrNull() ?: 0
-        val preventRepeatingMs = binding.editPreventRepeatingMs.text.toString().toLongOrNull() ?: 0L
-        val prevRuleTimeoutMs = binding.editPrevRuleTimeoutMs.text.toString().toLongOrNull() ?: 0L
+        val rule = RuleFormMapper.buildRuleFromForm(
+            binding = binding,
+            existing = existingRule,
+            startTime = startTime,
+            endTime = endTime,
+            selectedDays = selectedDays.toSet(),
+            aiProviderId = aiProviderId
+        )
 
         lifecycleScope.launch {
             withContext(Dispatchers.IO) {
-                val rule = existingRule
-                if (rule != null) {
-                    val updated = rule.copy(
-                        name = name,
-                        pattern = pattern,
-                        matchType = matchType,
-                        response = response,
-                        isRegex = matchType == MatchType.REGEX,
-                        caseSensitive = caseSensitive,
-                        enabled = enabled,
-                        delayMin = delayMin,
-                        delayMax = delayMax,
-                        priority = priority,
-                        responseMode = responseMode,
-                        ignorePattern = ignorePattern,
-                        ignoreGroups = ignoreGroups,
-                        ignoreIndividuals = ignoreIndividuals,
-                        updatedAt = now,
-                        startTime = startTime,
-                        endTime = endTime,
-                        activeDays = activeDaysStr,
-                        minDelaySeconds = minDelaySec,
-                        maxRepliesPerContact = maxReplies,
-                        ignoreHolidays = ignoreHolidays,
-                        useAi = useAi,
-                        aiProviderId = aiProviderId,
-                        systemPrompt = systemPrompt,
-                        aiTemperature = aiTemperature,
-                        replyDelayMs = replyDelayMs,
-                        replyHeader = replyHeader,
-                        replyFooter = replyFooter,
-                        replyPrefix = replyPrefix,
-                        probability = probability,
-                        lineBreaks = lineBreaks,
-                        caseInsensitive = caseInsensitive,
-                        ignoreAccents = ignoreAccents,
-                        similarityThreshold = similarityThreshold,
-                        receiverType = receiverType,
-                        specificContacts = specificContacts,
-                        specificGroups = specificGroups,
-                        dailyReplyLimit = dailyReplyLimit,
-                        preventRepeatingMs = preventRepeatingMs,
-                        prevRuleTimeoutMs = prevRuleTimeoutMs
-                    )
-                    db.ruleDao().update(updated)
+                if (existingRule != null) {
+                    db.ruleDao().update(rule)
                 } else {
-                    val newRule = Rule(
-                        name = name,
-                        pattern = pattern,
-                        matchType = matchType,
-                        response = response,
-                        isRegex = matchType == MatchType.REGEX,
-                        caseSensitive = caseSensitive,
-                        enabled = enabled,
-                        delayMin = delayMin,
-                        delayMax = delayMax,
-                        priority = priority,
-                        responseMode = responseMode,
-                        ignorePattern = ignorePattern,
-                        ignoreGroups = ignoreGroups,
-                        ignoreIndividuals = ignoreIndividuals,
-                        createdAt = now,
-                        updatedAt = now,
-                        startTime = startTime,
-                        endTime = endTime,
-                        activeDays = activeDaysStr,
-                        minDelaySeconds = minDelaySec,
-                        maxRepliesPerContact = maxReplies,
-                        ignoreHolidays = ignoreHolidays,
-                        useAi = useAi,
-                        aiProviderId = aiProviderId,
-                        systemPrompt = systemPrompt,
-                        aiTemperature = aiTemperature,
-                        replyDelayMs = replyDelayMs,
-                        replyHeader = replyHeader,
-                        replyFooter = replyFooter,
-                        replyPrefix = replyPrefix,
-                        probability = probability,
-                        lineBreaks = lineBreaks,
-                        caseInsensitive = caseInsensitive,
-                        ignoreAccents = ignoreAccents,
-                        similarityThreshold = similarityThreshold,
-                        receiverType = receiverType,
-                        specificContacts = specificContacts,
-                        specificGroups = specificGroups,
-                        dailyReplyLimit = dailyReplyLimit,
-                        preventRepeatingMs = preventRepeatingMs,
-                        prevRuleTimeoutMs = prevRuleTimeoutMs
-                    )
-                    db.ruleDao().insert(newRule)
+                    db.ruleDao().insert(rule)
                 }
             }
 
