@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- WhatsApp Green Palette -->
+    <!-- WhatsApp Green Palette (Light) -->
     <color name="wa_green">#FF25D366</color>
     <color name="wa_green_dark">#FF128C7E</color>
     <color name="wa_green_darker">#FF075E54</color>
     <color name="wa_green_status">#FF054D44</color>
     <color name="wa_green_light">#FFDCF8C6</color>
     <color name="wa_background">#FFECE5DD</color>
+
+    <!-- WhatsApp Green Palette (Dark) - will be overridden in values-night -->
+    <color name="wa_green_status_night">#FF054D44</color>
+    <color name="wa_green_nav_night">#FF075E54</color>
 
     <!-- Legacy aliases (referenced in layouts) -->
     <color name="purple_200">#FF25D366</color>
@@ -17,7 +21,7 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- Material 3 Theme Colors — WhatsApp Green -->
+    <!-- Material 3 Theme Colors — WhatsApp Green (Light) -->
     <color name="md_theme_primary">#FF075E54</color>
     <color name="md_theme_onPrimary">#FFFFFFFF</color>
     <color name="md_theme_primaryContainer">#FFB2DFDB</color>

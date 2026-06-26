@@ -65,6 +65,7 @@ class WANotificationListener : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val handler = Handler(Looper.getMainLooper())
     private val processedNotifications = java.util.LinkedHashMap<String, Boolean>(512, 0.75f, true)
+    private var isServiceDestroyed = false
 
     // ── Lifecycle ──────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ class WANotificationListener : NotificationListenerService() {
         super.onCreate()
         Log.d(TAG, "=== SERVICE onCreate ===")
         try {
-            val app = application as ReplyForgeApp
+            val app = application as? ReplyForgeApp ?: return
             val db = AppDatabase.getInstance(this)
             appPrefs = app.appPrefs
             aiService = AiService(db.conversationDao(), db.aiUsageDao())
@@ -91,7 +92,8 @@ class WANotificationListener : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.d(TAG, "=== LISTENER CONNECTED ===")
-        Log.d(TAG, "Active notifications: ${activeNotifications?.size ?: 0}")
+        val activeCount = activeNotifications?.size ?: 0
+        Log.d(TAG, "Active notifications: $activeCount")
         serviceScope.launch {
             val enabled = appPrefs.autoReplyEnabled.first()
             Log.d(TAG, "Auto-reply enabled in prefs: $enabled")
@@ -106,13 +108,16 @@ class WANotificationListener : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "=== SERVICE DESTROYED ===")
+        isServiceDestroyed = true
         serviceScope.cancel()
         handler.removeCallbacksAndMessages(null)
+        processedNotifications.clear()
     }
 
     // ── Notification Handler ───────────────────────────────────
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        if (isServiceDestroyed) return
         super.onNotificationPosted(sbn)
         if (sbn == null) return
         if (sbn.packageName !in waPackages) return
@@ -125,7 +130,6 @@ class WANotificationListener : NotificationListenerService() {
         Log.d(TAG, "=== WA NOTIF: title='$title' text='${text.take(60)}' id=${sbn.id} ===")
 
         if (title.isBlank() || text.isBlank()) return
-
         // Dedup by notification key
         val notifKey = sbn.key ?: return
         if (processedNotifications.containsKey(notifKey)) {
@@ -159,12 +163,16 @@ class WANotificationListener : NotificationListenerService() {
         Log.d(TAG, ">>> PROCESSING: from=$sender msg='$text' isGroup=$isGroup <<<")
         dumpAllActions(notification)
 
+        if (isServiceDestroyed) return
         serviceScope.launch {
+            if (isServiceDestroyed) return@launch
             try {
                 val result = autoReplyEngine.processIncomingMessage(sender, text, isGroup, groupName)
                 if (result != null) {
                     Log.d(TAG, "=== MATCH: rule='${result.matchedRule.name}' delay=${result.delayMs}ms ===")
-                    handler.postDelayed({ sendReply(sbn, result) }, result.delayMs)
+                    if (!isServiceDestroyed) {
+                        handler.postDelayed({ sendReply(sbn, result) }, result.delayMs)
+                    }
                 } else {
                     Log.d(TAG, "No matching rule for '$text'")
                     val db = AppDatabase.getInstance(this@WANotificationListener)
@@ -173,7 +181,7 @@ class WANotificationListener : NotificationListenerService() {
                     rules.forEach { Log.d(TAG, "  Rule: '${it.name}' pattern='${it.pattern}'") }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing message", e)
+                Log.e(TAG, "Error processing message: ${e.message}", e)
             }
         }
     }
@@ -299,10 +307,15 @@ class WANotificationListener : NotificationListenerService() {
         try {
             val carExt = notification.extras?.getBundle("android.car.EXTENSIONS")
             val conv = carExt?.getBundle("car_conversation")
-            val replyPi = conv?.getParcelable<PendingIntent>("on_reply")
+            val replyPi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                conv?.getParcelable("on_reply", PendingIntent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                conv?.getParcelable<PendingIntent>("on_reply")
+            }
             if (replyPi != null) {
                 // Car reply uses a specific result key
-                val replyKey = conv.getString("reply_key", "reply")
+                val replyKey = conv?.getString("reply_key") ?: "reply"
                 val ri = RemoteInput.Builder(replyKey)
                     .setAllowFreeFormInput(true)
                     .build()
@@ -339,55 +352,56 @@ class WANotificationListener : NotificationListenerService() {
 
         // Strategy 2: Search all active WA notifications right now
         Log.w(TAG, "No reply action in current notif, searching active...")
-        if (searchActiveAndSend(sbn, result)) return
+        if (searchActiveAndSend(result)) return
 
         // Strategy 3: Delayed re-check (WA sends duplicate notifications,
         // sometimes the second one has reply actions)
         Log.d(TAG, "Scheduling delayed re-check in ${RECHECK_DELAY_MS}ms...")
-        handler.postDelayed({
-            Log.d(TAG, "=== DELAYED RE-CHECK ===")
-            // Re-check current notification first
-            val recheck = extractReplyAction(notification)
-            if (recheck != null) {
-                Log.d(TAG, "Delayed: found reply in current notif (${recheck.source})")
-                if (executeReply(recheck, result)) {
-                    logReply(result)
-                    return@postDelayed
+        if (!isServiceDestroyed) {
+            handler.postDelayed({
+                if (isServiceDestroyed) return@postDelayed
+                Log.d(TAG, "=== DELAYED RE-CHECK ===")
+                // Re-check current notification first
+                val recheck = extractReplyAction(notification)
+                if (recheck != null) {
+                    Log.d(TAG, "Delayed: found reply in current notif (${recheck.source})")
+                    if (executeReply(recheck, result)) {
+                        logReply(result)
+                        return@postDelayed
+                    }
                 }
-            }
-            // Then search all active
-            if (!searchActiveAndSend(sbn, result)) {
-                Log.e(TAG, "=== ALL STRATEGIES FAILED ===")
-                Log.e(TAG, "Tip: Check WhatsApp notification settings → 'Conversation notifications' ON")
-                Log.e(TAG, "Tip: Lock screen → 'Show all notification content'")
-                Log.e(TAG, "Tip: MIUI → Settings → Notifications → Full Screen Notification → enable WA")
-            }
-        }, RECHECK_DELAY_MS)
-    }
-
-    /**
-     * Search all active WA notifications for a reply action.
-     * Returns true if reply was sent.
-     */
-    private fun searchActiveAndSend(currentSbn: StatusBarNotification, result: ReplyResult): Boolean {
-        val activeSbns = activeNotifications ?: emptyArray()
-
-        for (activeSbn in activeSbns) {
-            if (activeSbn.packageName !in waPackages) continue
-            // Try ALL notifications including current (it might have changed)
-
-            val activeNotif = activeSbn.notification ?: continue
-            val found = extractReplyAction(activeNotif)
-            if (found != null) {
-                Log.d(TAG, "  → Found reply in active notif id=${activeSbn.id} (${found.source})")
-                if (executeReply(found, result)) {
-                    logReply(result)
-                    return true
+                // Then search all active
+                if (!searchActiveAndSend(result)) {
+                    Log.e(TAG, "=== ALL STRATEGIES FAILED ===")
+                    Log.e(TAG, "Tip: Check WhatsApp notification settings -> 'Conversation notifications' ON")
+                    Log.e(TAG, "Tip: Lock screen -> 'Show all notification content'")
+                    Log.e(TAG, "Tip: MIUI -> Settings -> Notifications -> Full Screen Notification -> enable WA")
                 }
-            }
+            }, RECHECK_DELAY_MS)
         }
-        return false
     }
+
+    /** Search all active WA notifications for a reply action.
+     * Returns true if reply was sent. */
+    private fun searchActiveAndSend(result: ReplyResult): Boolean {
+         val activeSbns = activeNotifications ?: return false
+
+         for (activeSbn in activeSbns) {
+             if (activeSbn.packageName !in waPackages) continue
+             // Try ALL notifications including current (it might have changed)
+
+             val activeNotif = activeSbn.notification ?: continue
+             val found = extractReplyAction(activeNotif)
+             if (found != null) {
+                 Log.d(TAG, "  -> Found reply in active notif id=${activeSbn.id} (${found.source})")
+                 if (executeReply(found, result)) {
+                     logReply(result)
+                     return true
+                 }
+             }
+         }
+         return false
+     }
 
     /**
      * Execute a notification reply using RemoteInput.addResultsToIntent().

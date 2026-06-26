@@ -26,9 +26,9 @@
         <item name="colorOnSurfaceVariant">@color/md_theme_onSurfaceVariant</item>
         <item name="colorOutline">@color/md_theme_outline</item>
         <item name="colorOutlineVariant">@color/md_theme_outlineVariant</item>
-        <!-- WhatsApp-style status bar -->
-        <item name="android:statusBarColor">@color/wa_green_status</item>
-        <item name="android:navigationBarColor">@color/wa_green_darker</item>
+        <!-- WhatsApp-style status bar (uses night variant in dark mode) -->
+        <item name="android:statusBarColor">@color/wa_green_status_night</item>
+        <item name="android:navigationBarColor">@color/wa_green_nav_night</item>
     </style>
 
 </resources>

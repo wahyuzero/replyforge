@@ -72,15 +72,15 @@ class AiUsageActivity : AppCompatActivity() {
 
     private fun displayStats(stats: Stats) {
         binding.textTodayTokens.text = getString(R.string.label_tokens, stats.todayTokens)
-        binding.textTodayCost.text = getString(R.string.label_cost, String.format("%.4f", stats.todayCost))
+        binding.textTodayCost.text = getString(R.string.label_cost, stats.todayCost)
         binding.textTodayCalls.text = getString(R.string.label_api_calls, stats.todayCalls)
 
         binding.textMonthTokens.text = getString(R.string.label_tokens, stats.monthTokens)
-        binding.textMonthCost.text = getString(R.string.label_cost, String.format("%.4f", stats.monthCost))
+        binding.textMonthCost.text = getString(R.string.label_cost, stats.monthCost)
         binding.textMonthCalls.text = getString(R.string.label_api_calls, stats.monthCalls)
 
         binding.textTotalTokens.text = getString(R.string.label_total_tokens, stats.totalTokens)
-        binding.textTotalCost.text = getString(R.string.label_total_cost, String.format("%.4f", stats.totalCost))
+        binding.textTotalCost.text = getString(R.string.label_total_cost, stats.totalCost)
     }
 
     data class Stats(

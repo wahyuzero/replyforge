@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- WhatsApp Green Palette (Dark overrides) -->
+    <color name="wa_green_status_night">#FF003731</color>
+    <color name="wa_green_nav_night">#FF004F47</color>
+
+    <!-- Material 3 Theme Colors — WhatsApp Green (Dark) -->
     <color name="md_theme_primary">#FFB2DFDB</color>
     <color name="md_theme_onPrimary">#FF003731</color>
     <color name="md_theme_primaryContainer">#FF004F47</color>

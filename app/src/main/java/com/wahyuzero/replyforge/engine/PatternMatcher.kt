@@ -37,11 +37,10 @@ object PatternMatcher {
         message: String,
         matchType: MatchType,
         caseSensitive: Boolean,
-        caseInsensitive: Boolean = true,
         ignoreAccents: Boolean = false,
         similarityThreshold: Int = 0
     ): Boolean {
-        return matchPatternWithGroups(pattern, message, matchType, caseSensitive, caseInsensitive, ignoreAccents, similarityThreshold).matched
+        return matchPatternWithGroups(pattern, message, matchType, caseSensitive, ignoreAccents, similarityThreshold).matched
     }
 
     fun matchPatternWithGroups(
@@ -49,7 +48,6 @@ object PatternMatcher {
         message: String,
         matchType: MatchType,
         caseSensitive: Boolean,
-        caseInsensitive: Boolean = true,
         ignoreAccents: Boolean = false,
         similarityThreshold: Int = 0
     ): MatchResult {

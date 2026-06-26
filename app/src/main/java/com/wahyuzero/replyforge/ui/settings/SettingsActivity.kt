@@ -62,7 +62,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupAutoReplyToggle() {
-        binding.switchAutoReply.setOnCheckedChangeListener(null)
         binding.switchAutoReply.setOnCheckedChangeListener { _, isChecked ->
             lifecycleScope.launch(Dispatchers.IO) {
                 appPrefs.setAutoReplyEnabled(isChecked)
@@ -126,7 +125,6 @@ class SettingsActivity : AppCompatActivity() {
 
     // Phase 3: Away Mode
     private fun setupAwayMode() {
-        binding.switchAwayMode.setOnCheckedChangeListener(null)
         binding.switchAwayMode.setOnCheckedChangeListener { _, isChecked ->
             binding.layoutAwayMessage.visibility = if (isChecked) View.VISIBLE else View.GONE
             lifecycleScope.launch(Dispatchers.IO) {
@@ -202,19 +200,15 @@ class SettingsActivity : AppCompatActivity() {
     private fun observeSettings() {
         lifecycleScope.launch {
             appPrefs.autoReplyEnabled.collect { enabled ->
-                binding.switchAutoReply.setOnCheckedChangeListener(null)
                 binding.switchAutoReply.isChecked = enabled
-                setupAutoReplyToggle()
             }
         }
 
         // Observe away mode
         lifecycleScope.launch {
             appPrefs.awayMode.collect { isAway ->
-                binding.switchAwayMode.setOnCheckedChangeListener(null)
                 binding.switchAwayMode.isChecked = isAway
                 binding.layoutAwayMessage.visibility = if (isAway) View.VISIBLE else View.GONE
-                setupAwayMode()
             }
         }
 

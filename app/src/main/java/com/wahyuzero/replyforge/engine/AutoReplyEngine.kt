@@ -206,13 +206,13 @@ class AutoReplyEngine(
         val providerId = rule.aiProviderId ?: return fallbackResponse
 
         try {
-            val provider = aiProviderDao!!.getProviderById(providerId)
+            val provider = aiProviderDao?.getProviderById(providerId)
             if (provider == null || !provider.isActive) {
                 Log.w(TAG, "AI provider $providerId not found or inactive, using fallback")
                 return fallbackResponse
             }
 
-            val result = aiService!!.getAiReply(
+            val result = aiService?.getAiReply(
                 provider = provider,
                 contactName = sender,
                 incomingMessage = text,
@@ -337,6 +337,7 @@ class AutoReplyEngine(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun applyPlaceholders(
         response: String,
         sender: String,
@@ -444,7 +445,6 @@ class AutoReplyEngine(
                 message = text,
                 matchType = rule.matchType,
                 caseSensitive = rule.caseSensitive,
-                caseInsensitive = rule.caseInsensitive,
                 ignoreAccents = rule.ignoreAccents,
                 similarityThreshold = rule.similarityThreshold
             )
